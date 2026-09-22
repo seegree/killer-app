@@ -364,6 +364,8 @@
   // ---------------------------------------------------------------- rendering pieces
 
   const LOGO = '<img class="logo" src="logo.svg" alt="">';
+  // Full illustrated scene for the roomy screens; falls back to the plain logo until scene.svg exists.
+  const SCENE = `<img class="scene" src="scene.svg" alt="" onerror="this.onerror=null;this.src='logo.svg';this.className='logo'">`;
 
   // Whiteboard strokes: 1st strike "/", 2nd makes an "X", 3rd circles it (OUT).
   function stroke(i, draw) {
@@ -450,7 +452,7 @@
     app.innerHTML = `
       <section class="setup">
         <header class="hero">
-          ${LOGO}
+          ${SCENE}
           <h1 class="wordmark">Killer</h1>
           <p class="tagline">${START_LIVES} lives each · last one standing wins</p>
         </header>
@@ -565,7 +567,7 @@
     app.innerHTML = `
       <section class="winner">
         <div class="win-card">
-          ${LOGO}
+          ${SCENE}
           <div class="win-label">Last one standing</div>
           <h1 class="win-name" style="--fit:${fit(w ? w.name : '')}">${esc(w ? w.name : 'Nobody')}</h1>
           ${w ? `

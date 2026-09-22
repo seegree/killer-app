@@ -17,8 +17,8 @@ There's no build step and no dependencies. The game auto-saves in the browser, s
 - **Menu:** add a late player, TV mode, rematch, or start a new game.
 - **Keyboard:** `M` miss · `Space` made · `E` extra life · `Z` undo · `T` TV mode.
 
-## Changing the logo
-`logo.svg` is the one master logo file. The in-app logo and the browser tab both use it directly. To change it:
-1. Replace `logo.svg` with the new design: a square SVG with a transparent background.
-2. Run `./make-icons.sh` to rebuild the home-screen icons (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`) on the felt-green background.
-3. Commit and push.
+## Logo and artwork
+- **`logo.svg`** is the simple mark. The home-screen icons, the browser tab and the in-game top bar use it. It should be a square SVG with a transparent background that still reads at 28px. After changing it, run `./make-icons.sh` to rebuild `apple-touch-icon.png`, `icon-192.png` and `icon-512.png`.
+- **`scene.svg`** (optional) is the full illustration, shown on the start screen and the winner screen. Any aspect ratio works, but keep the background transparent. If the file is missing, those screens show `logo.svg` instead.
+
+Commit and push to update the live site.
