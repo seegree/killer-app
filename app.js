@@ -363,7 +363,7 @@
 
   // ---------------------------------------------------------------- rendering pieces
 
-  const LOGO = `<svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="lg-ball" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#4a4a4a"/><stop offset=".45" stop-color="#151515"/><stop offset="1" stop-color="#000"/></radialGradient></defs><circle cx="32" cy="32" r="30" fill="url(#lg-ball)"/><circle cx="32" cy="32" r="15" fill="#f4f1e8"/><g stroke="#c9302c" stroke-linecap="round" fill="none"><path d="M27.5 27.5l9 9M36.5 27.5l-9 9" stroke-width="3.2"/><circle cx="32" cy="32" r="10.5" stroke-width="2.4"/></g><ellipse cx="22" cy="17" rx="8" ry="4.5" fill="#fff" opacity=".18" transform="rotate(-30 22 17)"/></svg>`;
+  const LOGO = '<img class="logo" src="logo.svg" alt="">';
 
   // Whiteboard strokes: 1st strike "/", 2nd makes an "X", 3rd circles it (OUT).
   function stroke(i, draw) {

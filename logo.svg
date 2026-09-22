@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Killer logo: 8-ball with a circled X. Transparent background.
+       This one file is used everywhere: in-app logo, browser tab, and the
+       home-screen icons (regenerate those with ./make-icons.sh). -->
+  <defs>
+    <radialGradient id="ball" cx="35%" cy="30%" r="75%">
+      <stop offset="0" stop-color="#4a4a4a"/>
+      <stop offset=".45" stop-color="#151515"/>
+      <stop offset="1" stop-color="#000"/>
+    </radialGradient>
+  </defs>
+
+  <!-- ball -->
+  <circle cx="256" cy="256" r="240" fill="url(#ball)"/>
+  <!-- white disc -->
+  <circle cx="256" cy="256" r="120" fill="#f4f1e8"/>
+  <!-- circled X -->
+  <g fill="none" stroke="#c9302c" stroke-linecap="round">
+    <path d="M220 220l72 72M292 220l-72 72" stroke-width="26"/>
+    <circle cx="256" cy="256" r="84" stroke-width="19"/>
+  </g>
+  <!-- shine -->
+  <ellipse cx="176" cy="136" rx="64" ry="36" fill="#fff" opacity=".18" transform="rotate(-30 176 136)"/>
+</svg>
