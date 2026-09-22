@@ -1,0 +1,13 @@
+{
+  "name": "Killer — Pool Scorekeeper",
+  "short_name": "Killer",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08120e",
+  "theme_color": "#08120e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
