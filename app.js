@@ -537,7 +537,7 @@
               </div>
               <div class="actions">
                 <button class="act act-miss" data-act="miss">
-                  <span class="act-glyph">✕</span><span class="act-label">Miss</span><span class="act-sub">or scratch</span><kbd>M</kbd>
+                  <span class="act-glyph">✕</span><span class="act-label">Miss</span><span class="act-sub">or scratch</span><kbd>X</kbd>
                 </button>
                 <button class="act act-made" data-act="made">
                   <span class="act-glyph">✓</span><span class="act-label">Made</span><span class="act-sub">safe</span><kbd>Space</kbd>
@@ -555,7 +555,7 @@
           </section>
         </div>
 
-        ${S.tv ? '<footer class="tv-keys"><span><kbd>M</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>Z</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>' : ''}
+        ${S.tv ? '<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>Z</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>' : ''}
       </section>`;
   }
 
@@ -642,7 +642,7 @@
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
-            <span><kbd>M</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>Z</kbd> Undo</span><span><kbd>T</kbd> TV mode</span>
+            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>Z</kbd> Undo</span><span><kbd>T</kbd> TV mode</span>
           </div>
           <p class="sheet-note">Tip: tap any player on the board to fix their lives.</p>
         </div>`;
@@ -861,7 +861,7 @@
     if ((e.metaKey || e.ctrlKey || e.altKey) && k !== 'z') return;
 
     if (S.phase === 'playing') {
-      if (k === 'm' || k === 'arrowleft') actMiss();
+      if (k === 'x' || k === 'arrowleft') actMiss();
       else if (k === ' ' || k === 'arrowright' || k === 'enter') actMade();
       else if (k === 'e' || k === 'arrowup' || k === '+' || k === '=') actExtra();
       else if (k === 'z' || k === 'u' || k === 'backspace') undo();

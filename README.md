@@ -15,7 +15,7 @@ There's no build step and no dependencies. The game auto-saves in the browser, s
 - **Marks:** 1 lost is `/`, 2 lost is `X`, and 3 lost is a circled X meaning OUT. Lives above 3 show as gold `+N` chips.
 - **Fix mistakes:** use **Undo** (it goes back any number of steps), or tap any player to set their lives, make them the shooter, or remove them.
 - **Menu:** add a late player, TV mode, rematch, or start a new game.
-- **Keyboard:** `M` miss · `Space` made · `E` extra life · `Z` undo · `T` TV mode.
+- **Keyboard:** `X` miss · `Space` made · `E` extra life · `Z` undo · `T` TV mode.
 
 ## Logo and artwork
 All artwork is flat SVG, with text converted to outlines.
