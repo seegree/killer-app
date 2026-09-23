@@ -18,6 +18,10 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = () => Math.random().toString(36).slice(2, 10);
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // TV mode hides the tap buttons and relies on the keyboard, so only offer it
+  // on devices with a mouse or trackpad (laptops/desktops), not phones or tablets.
+  const canTV = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const tvOn = () => !!S.tv && S.phase === 'playing' && canTV();
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- state
@@ -449,7 +453,7 @@
   // ---------------------------------------------------------------- screens
 
   function render() {
-    document.body.classList.toggle('tv', !!S.tv && S.phase === 'playing');
+    document.body.classList.toggle('tv', tvOn());
     document.body.classList.toggle('win', S.phase === 'finished');
     if (S.phase === 'setup') renderSetup();
     else if (S.phase === 'playing') renderGame();
@@ -549,7 +553,7 @@
         <header class="topbar">
           <div class="brand-sm">${LOGO}<span>Killer</span></div>
           <div class="pill"><b>${alive}</b> of ${S.players.length} alive</div>
-          ${S.tv
+          ${tvOn()
             ? '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : '<button class="icon-btn" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>'}
         </header>
@@ -590,7 +594,7 @@
           </section>
         </div>
 
-        ${S.tv ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -673,7 +677,7 @@
             <input type="text" data-multi placeholder="Add a late player" maxlength="24" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Late player name">
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
-          <button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>
+          ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -912,7 +916,7 @@
       if (k === 'x' || k === 'arrowleft') actMiss();
       else if (k === ' ' || k === 'arrowright' || k === 'enter') actMade();
       else if (k === 'e' || k === 'arrowup' || k === '+' || k === '=') actExtra();
-      else if (k === 't' || (k === 'escape' && S.tv)) toggleTV();
+      else if (canTV() && (k === 't' || (k === 'escape' && S.tv))) toggleTV();
       else return;
       e.preventDefault();
     }
