@@ -37,10 +37,12 @@
   let shuffling = false;
   let sheetMode = null; // { type: 'menu' } | { type: 'player', id }
   let confirmKey = null;
-  let setupNotice = ''; // duplicate-name warning shown under the name box
+  let setupNotice = '';
+  let view = 'main'; // 'main' | 'recap' on a finished game
+  let recapTab = 'awards'; // duplicate-name warning shown under the name box
 
   function freshState() {
-    return { phase: 'setup', roster: [], players: [], current: 0, turnBonus: 0, outOrder: [], last: null, winner: null, tv: false };
+    return { phase: 'setup', roster: [], players: [], current: 0, turnBonus: 0, outOrder: [], last: null, winner: null, log: [], tv: false };
   }
 
   function load() {
@@ -70,9 +72,10 @@
   }
 
   // TV mode is a view preference, so Undo never flips it.
+  // The shot log only ever grows, so snapshots store its length rather than a copy.
   function snapshot() {
-    const { tv, ...rest } = S;
-    return JSON.stringify(rest);
+    const { tv, log, ...rest } = S;
+    return JSON.stringify({ ...rest, logLen: log.length });
   }
 
   function commit(fn) {
@@ -86,8 +89,9 @@
   function undo() {
     if (!history.length) return;
     sfx.stop();
-    const tv = S.tv;
-    S = { ...JSON.parse(history.pop()), tv };
+    const { tv, log } = S;
+    const { logLen = 0, ...prev } = JSON.parse(history.pop());
+    S = { ...prev, log: log.slice(0, logLen), tv };
     save();
     render();
     toast('↶ Undone');
@@ -200,6 +204,7 @@
       p.misses++;
       p.lives--;
       S.last = { type: 'miss', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
+      S.log.push({ p: p.id, a: 'miss', l: p.lives });
       if (p.lives <= 0) { wentOut = true; markOut(p); }
       if (!checkFinish()) advance();
     });
@@ -218,6 +223,7 @@
       p.shots++;
       p.pots++;
       S.last = { type: 'made', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
+      S.log.push({ p: p.id, a: 'made', l: p.lives });
       advance();
     });
     buzz(12);
@@ -232,6 +238,7 @@
       p.extras++;
       S.turnBonus++;
       S.last = { type: 'extra', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
+      S.log.push({ p: p.id, a: 'extra', l: p.lives });
     });
     buzz(20);
     sfx.extra();
@@ -460,9 +467,11 @@
     document.body.classList.toggle('tv', tvOn());
     document.body.classList.toggle('win', S.phase === 'finished');
     const justWon = S.phase === 'finished' && lastPhase === 'playing';
+    if (S.phase !== 'finished') view = 'main';
     if (justWon) sfx.win();
     if (S.phase === 'setup') renderSetup();
     else if (S.phase === 'playing') renderGame();
+    else if (view === 'recap') renderRecap();
     else renderWinner();
 
     if (S.phase !== 'playing') flash.classList.remove('show');
@@ -627,12 +636,186 @@
               </ul>` : ''}
             ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
             <div class="win-actions">
-              <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo last shot</button>
               <button class="btn btn-start" data-do="rematch">Rematch</button>
+              <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
+              <button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button>
               <button class="btn btn-ghost" data-do="newgame">New game</button>
             </div>
           </div>
         </div>
+      </section>`;
+  }
+
+  // ---------------------------------------------------------------- recap
+
+  // Walk the shot log once and collect per-player numbers for awards and standings.
+  function gameStats() {
+    const stats = new Map(S.players.map((p) => [p.id, {
+      p, turns: 0, streak: 0, best: 0, opening: 0, openingLive: true,
+      edgeTurns: 0, comeback: false, hatTrick: false, outRound: null, leaves: 0, results: [],
+    }]));
+    let prevTurn = null; // the last shot that ended a turn
+    let extras = 0; // extra lives earned so far this turn
+    for (const e of S.log || []) {
+      const st = stats.get(e.p);
+      if (e.a === 'extra') {
+        extras++;
+        if (st && e.l === 2) st.comeback = true; // went from last life back to two
+        continue;
+      }
+      if (st) {
+        const startLives = (e.a === 'miss' ? e.l + 1 : e.l) - extras;
+        st.turns++;
+        st.results.push(e.a);
+        if (startLives === 1) st.edgeTurns++;
+        if (extras >= 2) st.hatTrick = true;
+        if (e.a === 'made') {
+          st.streak++;
+          st.best = Math.max(st.best, st.streak);
+          if (st.openingLive) st.opening++;
+        } else {
+          st.streak = 0;
+          st.openingLive = false;
+          if (e.l <= 0) {
+            st.outRound = st.turns;
+            // Toughest Leave: the previous shooter potted and left this.
+            const leaver = prevTurn && prevTurn.a === 'made' && prevTurn.p !== e.p && stats.get(prevTurn.p);
+            if (leaver) leaver.leaves++;
+          }
+        }
+      }
+      prevTurn = e;
+      extras = 0;
+    }
+    return stats;
+  }
+
+  // Minimums for the awards that need to be earned. Tune these after real games.
+  const AWARD_MIN = {
+    onFire: 4, // made in a row
+    ironMan: 3, // made from the start of the game
+    sharpshooterShots: 4, // shots taken to qualify for best pot %
+    nineLives: 2, // extra lives earned
+    edge: 4, // turns survived on the last life
+    toughestLeave: 3, // players out right after your turn
+    meltdownPots: 3, // potted this many before collapsing
+  };
+
+  // How a knocked-out player collapsed: missed their last 3 turns, or 3 of their last 4.
+  function meltdown(st) {
+    if (st.p.lives > 0) return null;
+    const r = st.results;
+    const last3 = r.slice(-3);
+    const last4 = r.slice(-4);
+    let window = 0;
+    if (last3.length === 3 && last3.every((a) => a === 'miss')) window = 3;
+    else if (last4.length === 4 && last4.filter((a) => a === 'miss').length === 3) window = 4;
+    if (!window) return null;
+    const before = r.slice(0, -window).filter((a) => a === 'made').length;
+    return before >= AWARD_MIN.meltdownPots ? { before, window } : null;
+  }
+
+  function computeAwards(stats) {
+    const all = [...stats.values()];
+    const list = [];
+    // Everyone tied for the top value, if it clears the minimum.
+    const top = (value, min) => {
+      const best = Math.max(...all.map(value));
+      return best >= min ? all.filter((st) => value(st) === best) : [];
+    };
+    const add = (icon, title, winners, detail) => {
+      if (winners.length) list.push({ icon, title, names: winners.map((st) => st.p.name), detail: detail(winners[0], winners.length > 1) });
+    };
+    const out = (id) => stats.get(id);
+    const round = (st) => (st.outRound ? `Out in round ${st.outRound}` : 'First one out');
+
+    const first = out(S.outOrder[0]);
+    if (first) add('🩸', 'First Blood', [first], round);
+    const runnerUp = S.outOrder.length > 1 && out(S.outOrder[S.outOrder.length - 1]);
+    if (runnerUp) add('🥈', 'So Close', [runnerUp], () => 'Last one knocked out');
+    const champ = S.winner && out(S.winner);
+    if (champ && champ.p.lives === 1) add('⚰️', 'Dead Man Walking', [champ], () => 'Won it on their last life');
+
+    const fire = top((st) => st.best, AWARD_MIN.onFire);
+    add('🔥', 'On Fire', fire, (st) => `${st.best} made in a row`);
+    const iron = top((st) => st.opening, AWARD_MIN.ironMan);
+    const sameAsFire = iron.length && iron.every((st) => fire.includes(st)) && iron[0].opening === fire[0].best;
+    if (!sameAsFire) add('🛡️', 'Iron Man', iron, (st) => `Potted their first ${st.opening} shots`);
+
+    const pct = (st) => (st.p.shots >= AWARD_MIN.sharpshooterShots ? st.p.pots / st.p.shots : 0);
+    // Tied players share a percentage but not necessarily the same counts.
+    add('🎯', 'Sharpshooter', top(pct, 0.01), (st, shared) => (shared
+      ? `${Math.round(pct(st) * 100)}% potted`
+      : `${st.p.pots} of ${st.p.shots} potted (${Math.round(pct(st) * 100)}%)`));
+    add('🐈‍⬛', 'Nine Lives', top((st) => st.p.extras, AWARD_MIN.nineLives), (st) => `${st.p.extras} extra lives`);
+    add('🎩', 'Hat Trick', all.filter((st) => st.hatTrick), () => 'Potted 3 in one shot');
+    add('🧟', 'Comeback Kid', all.filter((st) => st.comeback), () => 'Earned a life back while on their last');
+    add('😰', 'Living on the Edge', top((st) => st.edgeTurns, AWARD_MIN.edge), (st) => `${st.edgeTurns} turns on their last life`);
+    add('😈', 'Toughest Leave', top((st) => st.leaves, AWARD_MIN.toughestLeave), (st) => `${st.leaves} players out right after their turn`);
+    // Meltdown: the best run that ended in a collapse.
+    const melted = all.map((st) => ({ st, m: meltdown(st) })).filter((x) => x.m);
+    const bestRun = Math.max(0, ...melted.map((x) => x.m.before));
+    add('📉', 'Meltdown', melted.filter((x) => x.m.before === bestRun).map((x) => x.st), (st) => {
+      const m = meltdown(st);
+      return `Potted ${m.before}, then missed ${m.window === 3 ? 'their last 3' : '3 of their last 4'}`;
+    });
+    add('🥶', 'Ice Cold', all.filter((st) => st.p.lives <= 0 && st.p.pots === 0), () => 'Out without potting a ball');
+    return list;
+  }
+
+  function renderRecap() {
+    const stats = gameStats();
+    const w = byId(S.winner) || S.players.find(isAlive);
+    const shots = S.players.reduce((n, p) => n + p.shots, 0);
+    const names = (list) => (list.length > 1
+      ? `${list.slice(0, -1).map(esc).join(', ')} &amp; ${esc(list[list.length - 1])}`
+      : esc(list[0]));
+
+    const awards = computeAwards(stats).map((a, i) => `
+      <article class="award" style="--i:${i}">
+        <div class="aw-icon" aria-hidden="true">${a.icon}</div>
+        <div class="aw-body">
+          <div class="aw-title">${a.title}</div>
+          <div class="aw-name${a.names.length > 2 ? ' many' : ''}">${names(a.names)}</div>
+          <div class="aw-detail">${a.detail}</div>
+        </div>
+      </article>`).join('');
+
+    // Finishing order: winner, then last out to first out.
+    const order = [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean);
+    const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+    const rows = order.map((p, i) => {
+      const st = stats.get(p.id);
+      return `<tr class="${i === 0 ? 'is-winner' : ''}">
+          <td class="st-place">${i === 0 ? '🏆' : ordinal(i + 1)}</td>
+          <td class="st-name">${esc(p.name)}</td>
+          <td class="st-num">${p.pots}<span>/${p.shots}</span></td>
+          <td class="st-num">${p.extras ? `+${p.extras}` : '–'}</td>
+          <td class="st-num st-wide">${st && st.best ? st.best : '–'}</td>
+          <td class="st-num">${i === 0 ? '–' : st && st.outRound ? `R${st.outRound}` : '–'}</td>
+        </tr>`;
+    }).join('');
+
+    app.innerHTML = `
+      <section class="recap">
+        ${fanfare ? '<button class="mute-fanfare" data-do="muteFanfare" aria-label="Mute fanfare">🔇 Mute fanfare</button>' : ''}
+        <header class="recap-head">
+          <button class="btn btn-ghost btn-sm" data-do="recapBack">← Back</button>
+          <div class="recap-title">
+            <h1>Recap</h1>
+            <p>${S.players.length} players · ${shots} shots · won by <b>${esc(w ? w.name : '—')}</b></p>
+          </div>
+        </header>
+        <div class="seg" role="tablist">
+          <button role="tab" class="${recapTab === 'awards' ? 'on' : ''}" aria-selected="${recapTab === 'awards'}" data-do="tabAwards">Awards</button>
+          <button role="tab" class="${recapTab === 'standings' ? 'on' : ''}" aria-selected="${recapTab === 'standings'}" data-do="tabStandings">Standings</button>
+        </div>
+        ${recapTab === 'awards'
+          ? `<div class="awards">${awards}</div>`
+          : `<table class="standings">
+              <thead><tr><th></th><th class="st-name">Player</th><th>Potted</th><th>Extra</th><th class="st-wide">Streak</th><th>Out Rd</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>`}
       </section>`;
   }
 
@@ -1038,6 +1221,10 @@
       case 'tv': toggleTV(); break;
       case 'rematch': rematch(); break;
       case 'newgame': newGame(); break;
+      case 'recap': view = 'recap'; recapTab = 'awards'; render(); window.scrollTo(0, 0); break;
+      case 'recapBack': view = 'main'; render(); window.scrollTo(0, 0); break;
+      case 'tabAwards': recapTab = 'awards'; render(); break;
+      case 'tabStandings': recapTab = 'standings'; render(); break;
     }
   });
 
