@@ -683,6 +683,18 @@ body.win::before { display: none; }
 .sheet-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); }
 .sheet-btn small { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--chalk-dim); }
 .sheet-btn.danger { color: #ff8a8d; }
+.sound-previews { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--chalk-dim);
+}
+.chip-btn:hover { color: var(--chalk); background: rgba(255, 255, 255, 0.09); }
 .sheet-note { margin: 12px 2px 0; font-size: 13px; color: var(--chalk-dim); }
 .stepper { display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 10px; }
 .step {

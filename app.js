@@ -85,6 +85,7 @@
 
   function undo() {
     if (!history.length) return;
+    sfx.stop();
     const tv = S.tv;
     S = { ...JSON.parse(history.pop()), tv };
     save();
@@ -204,7 +205,7 @@
     });
     if (wentOut) {
       buzz([60, 40, 140]);
-      if (S.phase === 'playing') flashOut(p.name);
+      if (S.phase === 'playing') { flashOut(p.name); sfx.out(); }
     } else {
       buzz(40);
     }
@@ -233,6 +234,7 @@
       S.last = { type: 'extra', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
     });
     buzz(20);
+    sfx.extra();
   }
 
   const ACTIONS = { miss: actMiss, made: actMade, extra: actExtra };
@@ -246,6 +248,7 @@
   }
 
   function rematch() {
+    sfx.stop();
     beginWith(shuffle(S.players.map((p) => p.name)));
     toast('🔁 New order — good luck');
   }
@@ -260,6 +263,7 @@
   }
 
   function newGame() {
+    sfx.stop();
     history = [];
     prevLives.clear();
     S = { ...freshState(), roster: S.players.map((p) => ({ id: uid(), name: p.name })) };
@@ -460,7 +464,7 @@
     else renderWinner();
 
     if (S.phase !== 'playing') flash.classList.remove('show');
-    if (S.phase === 'finished' && lastPhase === 'playing') confetti();
+    if (S.phase === 'finished' && lastPhase === 'playing') { confetti(); sfx.win(); }
     lastPhase = S.phase;
 
     S.players.forEach((p) => prevLives.set(p.id, p.lives));
@@ -495,7 +499,7 @@
         </header>
 
         <form class="add" id="addForm" autocomplete="off">
-          <input id="nameInput" type="text" data-multi placeholder="Name or initials" maxlength="24"
+          <input id="nameInput" type="text" data-multi placeholder="Name or initials"
                  enterkeyhint="enter" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Player name">
           <button class="btn btn-brass" type="submit">Add</button>
         </form>
@@ -674,10 +678,18 @@
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
           <form class="add add-sm" id="lateForm" autocomplete="off">
-            <input type="text" data-multi placeholder="Add a late player" maxlength="24" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Late player name">
+            <input type="text" data-multi placeholder="Add a late player" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Late player name">
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
+          <div class="sound-row">
+            <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound on' : '🔇 Sound off'}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
+            ${soundOn ? `<div class="sound-previews" aria-label="Preview sounds">
+              <button class="chip-btn" data-sheet="hear" data-sfx="extra">▶ Extra life</button>
+              <button class="chip-btn" data-sheet="hear" data-sfx="out">▶ Knocked out</button>
+              <button class="chip-btn" data-sheet="hear" data-sfx="win">▶ Winner</button>
+            </div>` : ''}
+          </div>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -702,10 +714,186 @@
       case 'shoot': if (p) { makeShooter(p); closeSheet(); } break;
       case 'remove': if (p && confirmTap(b, 'remove')) { removePlayer(p); closeSheet(); } break;
       case 'tv': closeSheet(); toggleTV(); break;
+      case 'sound': setSound(!soundOn); renderSheet(); sfx.extra(); break;
+      case 'hear': sfx[b.dataset.sfx](); break;
       case 'rematch': if (confirmTap(b, 'rematch')) { closeSheet(); rematch(); } break;
       case 'newgame': if (confirmTap(b, 'newgame')) { closeSheet(); newGame(); } break;
     }
   });
+
+  // ---------------------------------------------------------------- sound
+  // Retro arcade effects synthesized with Web Audio — no audio files.
+  const SOUND_KEY = 'killer.sound.v1';
+  let soundOn = (() => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; } })();
+  let actx = null;
+  let master = null;
+
+  function setSound(on) {
+    soundOn = on;
+    try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (_) { /* ignore */ }
+  }
+
+  // Browsers only allow audio after a tap, which every sound here follows.
+  function audio() {
+    if (!soundOn) return null;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!actx) {
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = 0.55;
+      const limiter = actx.createDynamicsCompressor();
+      master.connect(limiter);
+      limiter.connect(actx.destination);
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+
+  // One note. `hold` sustains then releases (brass, fanfare); otherwise it decays like a bell.
+  function note(ac, { f, t = 0, d = 0.15, type = 'square', vol = 0.1, to, hold = false, vib, lowpass, dest = master, track }) {
+    const start = ac.currentTime + t;
+    const end = start + d;
+    const osc = ac.createOscillator();
+    const env = ac.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f, start);
+    if (to) osc.frequency.exponentialRampToValueAtTime(to, end);
+    if (vib) {
+      const lfo = ac.createOscillator();
+      const depth = ac.createGain();
+      lfo.frequency.value = vib.rate;
+      depth.gain.setValueAtTime(0, start);
+      depth.gain.linearRampToValueAtTime(vib.depth, start + d * 0.4); // vibrato swells in
+      lfo.connect(depth);
+      depth.connect(osc.frequency);
+      lfo.start(start);
+      lfo.stop(end + 0.05);
+      if (track) track.push(lfo);
+    }
+    env.gain.setValueAtTime(0.0001, start);
+    env.gain.exponentialRampToValueAtTime(vol, start + 0.012);
+    if (hold) env.gain.setValueAtTime(vol, Math.max(start + 0.012, end - 0.07));
+    env.gain.exponentialRampToValueAtTime(0.0001, end);
+    osc.connect(env);
+    let out = env;
+    if (lowpass) {
+      const lp = ac.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = lowpass;
+      env.connect(lp);
+      out = lp;
+    }
+    out.connect(dest);
+    osc.start(start);
+    osc.stop(end + 0.05);
+    if (track) track.push(osc);
+  }
+
+  const midiHz = (m) => 440 * 2 ** ((m - 69) / 12);
+
+  // William Tell Overture finale (Rossini, 1829; public domain): the trumpet call, bars 226–242,
+  // transcribed from the full score (IMSLP #22579). Instruments in E/G are converted to sounding
+  // pitch in E major and raised an octave to carry on phone speakers. Entries: [bar, pattern, notes].
+  const WT_TEMPO = 152; // ♩ = 152, 2/4
+  const WT_RHYTHM = {
+    call: [[0, 1], [1.5, 0.25], [1.75, 0.25]], // ta … ta-ta
+    eighths: [[0, 0.5], [0.5, 0.5], [1, 0.5], [1.5, 0.5]],
+    gallop: [[0, 0.5], [0.5, 0.25], [0.75, 0.25], [1, 0.5], [1.5, 0.5]],
+    hold: [[0, 4.5]], // held through bars 240–241, released on the downbeat of 242
+  };
+  const WT = {
+    trumpet: [
+      [0, 'call', 71], [1, 'call', 71],
+      [2, 'eighths', [71, 68, 64, 68]], [3, 'eighths', [71, 68, 71, 76]],
+      [4, 'eighths', [71, 68, 64, 68]], [5, 'eighths', [71, 68, 71, 76]],
+      [6, 'call', 71], [7, 'call', 71], [8, 'call', 71], [9, 'call', 71],
+      [10, 'gallop', 71], [11, 'gallop', 71], [12, 'gallop', 71], [13, 'gallop', 71],
+      [14, 'hold', 71],
+    ],
+    hornE: [
+      [4, 'call', [76, 80]], [5, 'call', [76, 80]],
+      [6, 'eighths', [[76, 80], [71, 78], [68, 76], [71, 78]]],
+      [7, 'eighths', [[76, 80], [80, 83], [78, 81], [76, 80]]],
+      [8, 'eighths', [[71, 78], [76, 80], [71, 78], [78, 81]]],
+      [9, 'eighths', [[76, 80], [71, 78], [68, 76], [76, 80]]],
+      [10, 'gallop', [75, 78]], [11, 'gallop', [75, 78]], [12, 'gallop', [75, 78]], [13, 'gallop', [75, 78]],
+      [14, 'hold', [75, 78]],
+    ],
+    hornG: [
+      [8, 'call', [71, 83]], [9, 'call', [71, 83]],
+      [10, 'gallop', [71, 83]], [11, 'gallop', [71, 83]], [12, 'gallop', [71, 83]], [13, 'gallop', [71, 83]],
+      [14, 'hold', [71, 83]],
+    ],
+    bass: [
+      [10, 'gallop', 47], [11, 'gallop', 47], [12, 'gallop', 47], [13, 'gallop', 47],
+      [14, 'hold', 47],
+    ],
+  };
+
+  // Expand [bar, pattern, notes] entries into { t, d, notes[] } events in seconds.
+  function wtEvents(part) {
+    const beat = 60 / WT_TEMPO;
+    const out = [];
+    for (const [bar, pattern, notes] of part) {
+      WT_RHYTHM[pattern].forEach(([at, len], i) => {
+        const n = Array.isArray(notes) && pattern !== 'call' && pattern !== 'gallop' && pattern !== 'hold' ? notes[i] : notes;
+        out.push({ t: (bar * 2 + at) * beat, d: len * beat, held: pattern === 'hold', notes: [].concat(n) });
+      });
+    }
+    return out;
+  }
+
+  let fanfare = null; // { bus, nodes } while the winner fanfare is playing
+
+  function stopFanfare() {
+    if (!fanfare || !actx) return;
+    const now = actx.currentTime;
+    fanfare.bus.gain.setTargetAtTime(0, now, 0.04);
+    fanfare.nodes.forEach((n) => { try { n.stop(now + 0.25); } catch (_) { /* already stopped */ } });
+    fanfare = null;
+  }
+
+  const sfx = {
+    // Coin pickup: two quick bright notes.
+    extra() {
+      const ac = audio();
+      if (!ac) return;
+      note(ac, { f: 988, d: 0.08, hold: true });
+      note(ac, { f: 1319, t: 0.08, d: 0.42 });
+    },
+    // Knocked out: a single low tone that sinks, like an arcade "life lost".
+    out() {
+      const ac = audio();
+      if (!ac) return;
+      note(ac, { f: 330, to: 82, d: 0.85, type: 'square', vol: 0.12, hold: true, lowpass: 900 });
+      note(ac, { f: 165, to: 41, d: 0.85, type: 'triangle', vol: 0.14, hold: true });
+    },
+    // Victory: the William Tell trumpet call, trumpets over horns, ending on a held B major chord.
+    win() {
+      const ac = audio();
+      if (!ac) return;
+      stopFanfare();
+      const bus = ac.createGain();
+      bus.connect(master);
+      const nodes = [];
+      fanfare = { bus, nodes };
+      const play = (part, voice) => wtEvents(part).forEach((e) => {
+        // Short notes are slightly detached; the final chord swells with vibrato.
+        const d = e.held ? e.d : e.d * 0.82;
+        e.notes.forEach((m) => voice({ f: midiHz(m), t: e.t + 0.05, d, hold: true, dest: bus, track: nodes, ...(e.held ? { vib: { rate: 5.5, depth: 5 } } : {}) }));
+      });
+      play(WT.trumpet, (o) => note(ac, { ...o, type: 'square', vol: 0.085, lowpass: 3800 }));
+      const horn = (o) => {
+        note(ac, { ...o, type: 'triangle', vol: 0.055 });
+        note(ac, { ...o, type: 'sawtooth', vol: 0.022, lowpass: 1100, vib: undefined });
+      };
+      play(WT.hornE, horn);
+      play(WT.hornG, horn);
+      play(WT.bass, (o) => note(ac, { ...o, type: 'triangle', vol: 0.13, vib: undefined }));
+    },
+    stop: stopFanfare,
+  };
 
   // ---------------------------------------------------------------- feedback
 
