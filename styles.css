@@ -171,20 +171,8 @@ kbd {
   flex-direction: column;
 }
 .hero { text-align: center; margin-bottom: 22px; }
-.hero .logo { width: 76px; height: 76px; }
-.scene { display: block; margin: 0 auto; width: min(100%, 300px); height: auto; max-height: 34vh; object-fit: contain; }
-.wordmark {
-  margin: 6px 0 0;
-  font-family: var(--display);
-  font-weight: 400;
-  font-size: clamp(72px, 24vw, 108px);
-  line-height: 0.85;
-  letter-spacing: 0.05em;
-  background: linear-gradient(180deg, #fff, #d9d2bf);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+.wordmark { margin: 0; line-height: 0; }
+.wordmark img { display: block; width: min(100%, 420px); height: auto; margin: 0 auto; }
 .tagline { margin: 10px 0 0; color: var(--chalk-dim); font-size: 15px; letter-spacing: 0.02em; }
 
 .add { display: flex; gap: 10px; }
@@ -583,34 +571,33 @@ body.tv .pill b { font-size: 20px; }
 @media (hover: none) { .tv-keys { display: none; } }
 
 /* ------------------------------------------------------------------ winner */
+/* The poster has its own ink background, so the page goes flat ink to match. */
+body.win::before { display: none; }
 .winner {
   min-height: 100dvh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
-  padding: calc(var(--safe-t) + 24px) var(--pad) calc(var(--safe-b) + 24px);
+  padding: calc(var(--safe-t) + 16px) var(--pad) calc(var(--safe-b) + 20px);
   text-align: center;
 }
-.win-card {
-  container-type: inline-size;
-  width: min(640px, 100%);
-  padding: 30px 20px 26px;
-  border-radius: 28px;
-  background: radial-gradient(ellipse 90% 80% at 50% 0%, var(--felt-hi), var(--felt) 50%, var(--felt-lo));
-  box-shadow: 0 0 0 9px var(--wood-lo), 0 0 0 10px rgba(255, 255, 255, 0.08), inset 0 0 60px rgba(0, 0, 0, 0.5), 0 40px 80px -30px #000;
+.win-layout { width: min(560px, 100%); display: flex; flex-direction: column; align-items: center; }
+.win-poster {
+  display: block;
+  width: auto;
+  height: min(40dvh, 560px);
+  max-width: 100%;
+  aspect-ratio: 600 / 820;
+  animation: sceneIn 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
 }
-.win-card .logo { width: 70px; height: 70px; animation: roll 1.1s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
-.win-card .scene { width: min(100%, 340px); animation: sceneIn 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
-@keyframes sceneIn { from { opacity: 0; transform: scale(0.85) translateY(12px); } }
-@keyframes roll { from { transform: translateX(-120px) rotate(-360deg); opacity: 0; } }
-.win-label { margin-top: 12px; font-size: 13px; font-weight: 700; letter-spacing: 0.26em; text-transform: uppercase; color: rgba(244, 241, 232, 0.75); }
+@keyframes sceneIn { from { opacity: 0; transform: scale(0.9) translateY(14px); } }
+.win-info { container-type: inline-size; width: 100%; }
+.win-label { margin-top: 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.26em; text-transform: uppercase; color: var(--chalk-dim); }
 .win-name {
-  margin: 8px 0 4px;
+  margin: 6px 0 4px;
   font-family: var(--display);
   font-weight: 400;
-  font-size: calc(clamp(72px, 26cqi, 190px) * var(--fit, 1));
+  font-size: calc(clamp(60px, 22cqi, 150px) * var(--fit, 1));
   line-height: 0.9;
   padding-top: 0.06em;
   letter-spacing: 0.02em;
@@ -622,23 +609,30 @@ body.tv .pill b { font-size: 20px; }
   background-clip: text;
   color: transparent;
   filter: drop-shadow(0 6px 18px rgba(245, 197, 66, 0.35));
-  animation: nameIn 0.7s 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+  animation: nameIn 0.7s 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
 }
-.win-marks { display: flex; justify-content: center; margin: 6px 0 14px; }
-.win-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.win-stats li { padding: 10px 4px; border-radius: 14px; background: rgba(0, 0, 0, 0.22); }
+.win-stats { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.win-stats li { padding: 10px 4px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
 .win-stats b { display: block; font-family: var(--display); font-weight: 400; font-size: 34px; line-height: 1; padding-top: 3px; }
 .win-stats span { font-size: 11px; color: var(--chalk-dim); text-transform: uppercase; letter-spacing: 0.08em; }
-.podium { list-style: none; margin: 18px 0 0; padding: 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
-.podium li { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.22); }
+.podium { list-style: none; margin: 16px 0 0; padding: 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.podium li { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
 .place { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 999px; background: rgba(244, 241, 232, 0.14); }
 .podium .pname { font-family: var(--display); font-size: 24px; padding-top: 2px; }
-.win-actions { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 10px; width: min(640px, 100%); }
+.win-actions { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 10px; margin-top: 18px; }
 .win-actions .btn { min-height: 56px; }
 @media (max-width: 520px) {
   .win-actions { grid-template-columns: 1fr 1fr; }
   .win-actions .btn-start { grid-column: 1 / -1; grid-row: 1; }
   .win-stats b { font-size: 28px; }
+  .win-stats span { letter-spacing: 0.02em; }
+}
+/* Laptop / TV: poster on the left, results on the right */
+@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+  .win-layout { width: min(1180px, 100%); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: clamp(28px, 5vw, 72px); }
+  .win-poster { height: min(84dvh, 900px); }
+  .win-label { margin-top: 0; }
+  .win-name { font-size: calc(clamp(80px, 22cqi, 190px) * var(--fit, 1)); }
 }
 
 /* ------------------------------------------------------------------ sheet */

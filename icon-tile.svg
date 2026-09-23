@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="KILLER — dead-head mark"><g transform="rotate(-12 256 262)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="KILLER — dead-head mark"><rect width="512" height="512" rx="112" fill="#07100c"/><g transform="rotate(-12 256 262)">
       <circle cx="256" cy="262" r="176" fill="#f4f1e8"/>
       <path d="M236 92 Q226 52 250 40 M262 88 Q268 50 296 46" fill="none" stroke="#f4f1e8" stroke-width="18" stroke-linecap="round"/>
       <path d="M148 198L224 274M224 198L148 274" stroke="#07100c" stroke-width="30" stroke-linecap="round" fill="none"/>

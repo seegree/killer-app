@@ -18,7 +18,12 @@ There's no build step and no dependencies. The game auto-saves in the browser, s
 - **Keyboard:** `M` miss · `Space` made · `E` extra life · `Z` undo · `T` TV mode.
 
 ## Logo and artwork
-- **`logo.svg`** is the simple mark. The home-screen icons, the browser tab and the in-game top bar use it. It should be a square SVG with a transparent background that still reads at 28px. After changing it, run `./make-icons.sh` to rebuild `apple-touch-icon.png`, `icon-192.png` and `icon-512.png`.
-- **`scene.svg`** (optional) is the full illustration, shown on the start screen and the winner screen. Any aspect ratio works, but keep the background transparent. If the file is missing, those screens show `logo.svg` instead.
+All artwork is flat SVG, with text converted to outlines.
+- **`logo.svg`** is the dead-head mark. It's used in the in-game top bar and the browser tab.
+- **`icon-tile.svg`** is the dead head on a dark tile. It's the source for the home-screen icons: run `./make-icons.sh` after changing it to rebuild `apple-touch-icon.png`, `icon-192.png` and `icon-512.png`.
+- **`wordmark.svg`** is the dead head next to KILLER. It's the start-screen header.
+- **`poster.svg`** is the full scene. It appears on the winner screen, with the page background set to ink `#07100c` so it blends in.
+
+The design session's alternates are in `logo-alternatives/`, which is kept locally and not published.
 
 Commit and push to update the live site.

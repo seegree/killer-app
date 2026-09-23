@@ -364,8 +364,6 @@
   // ---------------------------------------------------------------- rendering pieces
 
   const LOGO = '<img class="logo" src="logo.svg" alt="">';
-  // Full illustrated scene for the roomy screens; falls back to the plain logo until scene.svg exists.
-  const SCENE = `<img class="scene" src="scene.svg" alt="" onerror="this.onerror=null;this.src='logo.svg';this.className='logo'">`;
 
   // Whiteboard strokes: 1st strike "/", 2nd makes an "X", 3rd circles it (OUT).
   function stroke(i, draw) {
@@ -417,6 +415,7 @@
 
   function render() {
     document.body.classList.toggle('tv', !!S.tv && S.phase === 'playing');
+    document.body.classList.toggle('win', S.phase === 'finished');
     if (S.phase === 'setup') renderSetup();
     else if (S.phase === 'playing') renderGame();
     else renderWinner();
@@ -452,8 +451,7 @@
     app.innerHTML = `
       <section class="setup">
         <header class="hero">
-          ${SCENE}
-          <h1 class="wordmark">Killer</h1>
+          <h1 class="wordmark"><img src="wordmark.svg" alt="Killer"></h1>
           <p class="tagline">${START_LIVES} lives each · last one standing wins</p>
         </header>
 
@@ -566,24 +564,25 @@
     const podium = S.outOrder.slice().reverse().slice(0, 2).map(byId).filter(Boolean);
     app.innerHTML = `
       <section class="winner">
-        <div class="win-card">
-          ${SCENE}
-          <div class="win-label">Last one standing</div>
-          <h1 class="win-name" style="--fit:${fit(w ? w.name : '')}">${esc(w ? w.name : 'Nobody')}</h1>
-          ${w ? `
-            <div class="win-marks">${marks(w, 'lg')}</div>
-            <ul class="win-stats">
-              <li><b>${w.shots}</b><span>shots</span></li>
-              <li><b>${w.pots}</b><span>potted</span></li>
-              <li><b>${w.extras}</b><span>extra lives</span></li>
-              <li><b>${w.lives}</b><span>lives left</span></li>
-            </ul>` : ''}
-          ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
-        </div>
-        <div class="win-actions">
-          <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo last shot</button>
-          <button class="btn btn-start" data-do="rematch">Rematch</button>
-          <button class="btn btn-ghost" data-do="newgame">New game</button>
+        <div class="win-layout">
+          <img class="win-poster" src="poster.svg" alt="Killer">
+          <div class="win-info">
+            <div class="win-label">Last one standing</div>
+            <h1 class="win-name" style="--fit:${fit(w ? w.name : '')}">${esc(w ? w.name : 'Nobody')}</h1>
+            ${w ? `
+              <ul class="win-stats">
+                <li><b>${w.shots}</b><span>shots</span></li>
+                <li><b>${w.pots}</b><span>potted</span></li>
+                <li><b>${w.extras}</b><span>extra lives</span></li>
+                <li><b>${w.lives}</b><span>lives left</span></li>
+              </ul>` : ''}
+            ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
+            <div class="win-actions">
+              <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo last shot</button>
+              <button class="btn btn-start" data-do="rematch">Rematch</button>
+              <button class="btn btn-ghost" data-do="newgame">New game</button>
+            </div>
+          </div>
         </div>
       </section>`;
   }
