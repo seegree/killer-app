@@ -18,6 +18,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = () => Math.random().toString(36).slice(2, 10);
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- state
 
@@ -32,6 +33,7 @@
   let shuffling = false;
   let sheetMode = null; // { type: 'menu' } | { type: 'player', id }
   let confirmKey = null;
+  let setupNotice = ''; // duplicate-name warning shown under the name box
 
   function freshState() {
     return { phase: 'setup', roster: [], players: [], current: 0, turnBonus: 0, outOrder: [], last: null, winner: null, tv: false };
@@ -164,6 +166,22 @@
       .filter(Boolean);
   }
 
+  // "Dave", "dave" and "DAVE" match, and so do "J.J." and "JJ"; "Dave R" is a different player.
+  const nameKey = (n) => n.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+  // Split new names into ones to add and ones already taken (including repeats within the batch).
+  function splitDupes(names, existing) {
+    const seen = new Set(existing.map(nameKey));
+    const fresh = [];
+    const dupes = [];
+    for (const n of names) {
+      const key = nameKey(n);
+      if (seen.has(key)) dupes.push(n);
+      else { seen.add(key); fresh.push(n); }
+    }
+    return { fresh, dupes };
+  }
+
   const livesLabel = (n) => (n <= 0 ? 'out' : n === 1 ? 'last life' : `${n} lives left`);
 
   // ---------------------------------------------------------------- shot actions
@@ -249,11 +267,19 @@
   function addLate(text) {
     const names = parseNames(text);
     if (!names.length || S.phase !== 'playing') return;
-    commit(() => {
-      names.forEach((n) => S.players.push(newPlayer(n)));
-      S.last = { type: 'add', name: names.join(', ') };
-    });
-    toast(`Added ${names.join(', ')}`);
+    const { fresh, dupes } = splitDupes(names, S.players.map((p) => p.name));
+    if (fresh.length) {
+      commit(() => {
+        fresh.forEach((n) => S.players.push(newPlayer(n)));
+        S.last = { type: 'add', name: fresh.join(', ') };
+      });
+    }
+    if (dupes.length) {
+      toast(`${dupes.join(', ')} ${dupes.length === 1 ? 'is' : 'are'} already in the game. Add a last initial.`, 3200);
+      buzz([30, 40, 30]);
+    } else {
+      toast(`Added ${fresh.join(', ')}`);
+    }
   }
 
   function setLives(p, value) {
@@ -317,12 +343,21 @@
 
   // ---------------------------------------------------------------- setup actions
 
+  // Returns the names that were skipped as duplicates.
   function addNames(text) {
     const names = parseNames(text);
-    if (!names.length) return;
-    S.roster.push(...names.map((name) => ({ id: uid(), name })));
+    if (!names.length) return [];
+    const { fresh, dupes } = splitDupes(names, S.roster.map((r) => r.name));
+    S.roster.push(...fresh.map((name) => ({ id: uid(), name })));
+    setupNotice = dupes.length === 1
+      ? `<b>${esc(dupes[0])}</b> is already on the list. Add a last initial, like “${esc(dupes[0])} R”.`
+      : dupes.length
+        ? `Skipped <b>${esc(dupes.join(', '))}</b>, already on the list. Add last initials to tell them apart.`
+        : '';
+    if (dupes.length) buzz([30, 40, 30]);
     save();
     render();
+    return dupes;
   }
 
   function shuffleRoster() {
@@ -460,7 +495,7 @@
                  enterkeyhint="enter" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Player name">
           <button class="btn btn-brass" type="submit">Add</button>
         </form>
-        <p class="hint">Tip: paste a whole list — one per line, or separated by commas.</p>
+        <p class="hint${setupNotice ? ' notice' : ''}" aria-live="polite">${setupNotice || 'Tip: paste a whole list — one per line, or separated by commas.'}</p>
 
         <div class="roster-head">
           <h2>Players <span class="count">${r.length}</span></h2>
@@ -555,7 +590,7 @@
           </section>
         </div>
 
-        ${S.tv ? '<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>Z</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>' : ''}
+        ${S.tv ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -642,7 +677,7 @@
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
-            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>Z</kbd> Undo</span><span><kbd>T</kbd> TV mode</span>
+            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> TV mode</span>
           </div>
           <p class="sheet-note">Tip: tap any player on the board to fix their lives.</p>
         </div>`;
@@ -685,11 +720,11 @@
     flashOut.timer = setTimeout(() => flash.classList.remove('show'), 1800);
   }
 
-  function toast(msg) {
+  function toast(msg, ms = 1600) {
     toastEl.textContent = msg;
     toastEl.classList.add('show');
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => toastEl.classList.remove('show'), 1600);
+    toast.timer = setTimeout(() => toastEl.classList.remove('show'), ms);
   }
 
   function buzz(pattern) {
@@ -774,6 +809,7 @@
     if (t.dataset.player) { openSheet({ type: 'player', id: t.dataset.player }); return; }
     if (t.dataset.del) {
       S.roster = S.roster.filter((r) => r.id !== t.dataset.del);
+      setupNotice = '';
       save();
       render();
       return;
@@ -804,8 +840,14 @@
     const input = form.querySelector('input');
     const text = input.value;
     input.value = '';
-    if (form.id === 'addForm') addNames(text);
-    else if (form.id === 'lateForm') { addLate(text); closeSheet(); }
+    if (form.id === 'addForm') {
+      const dupes = addNames(text);
+      if (dupes.length === 1 && parseNames(text).length === 1) {
+        const box = $('#nameInput');
+        box.value = `${dupes[0]} `;
+        box.focus();
+      }
+    } else if (form.id === 'lateForm') { addLate(text); closeSheet(); }
   });
 
   // Pasting a list (newlines/commas) adds everyone at once.
@@ -858,19 +900,21 @@
     if (e.repeat || sheet.open) return;
     if (e.target.closest && e.target.closest('input, textarea')) return;
     const k = e.key.toLowerCase();
-    if ((e.metaKey || e.ctrlKey || e.altKey) && k !== 'z') return;
+
+    // Undo is ⌘Z / Ctrl+Z only, so it can't be hit by accident next to X (Miss).
+    if (k === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      if (S.phase !== 'setup') { e.preventDefault(); undo(); }
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     if (S.phase === 'playing') {
       if (k === 'x' || k === 'arrowleft') actMiss();
       else if (k === ' ' || k === 'arrowright' || k === 'enter') actMade();
       else if (k === 'e' || k === 'arrowup' || k === '+' || k === '=') actExtra();
-      else if (k === 'z' || k === 'u' || k === 'backspace') undo();
       else if (k === 't' || (k === 'escape' && S.tv)) toggleTV();
       else return;
       e.preventDefault();
-    } else if (S.phase === 'finished' && (k === 'z' || k === 'u' || k === 'backspace')) {
-      e.preventDefault();
-      undo();
     }
   });
 

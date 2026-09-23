@@ -191,6 +191,8 @@ kbd {
 .add input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 3px rgba(224, 178, 90, 0.25); }
 .add .btn { height: 56px; padding: 0 22px; font-size: 16px; }
 .hint { margin: 8px 2px 0; font-size: 13px; color: var(--chalk-faint); }
+.hint.notice { color: var(--gold); font-weight: 600; }
+.hint.notice b { color: var(--chalk); }
 
 .roster-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 26px 0 12px; }
 .roster-head h2 {
@@ -739,7 +741,8 @@ body.win::before { display: none; }
   transform: translate(-50%, 10px);
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: none;
-  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  text-align: center;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 @media (min-width: 960px) { #toast { bottom: 28px; } }
