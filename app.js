@@ -459,12 +459,14 @@
   function render() {
     document.body.classList.toggle('tv', tvOn());
     document.body.classList.toggle('win', S.phase === 'finished');
+    const justWon = S.phase === 'finished' && lastPhase === 'playing';
+    if (justWon) sfx.win();
     if (S.phase === 'setup') renderSetup();
     else if (S.phase === 'playing') renderGame();
     else renderWinner();
 
     if (S.phase !== 'playing') flash.classList.remove('show');
-    if (S.phase === 'finished' && lastPhase === 'playing') { confetti(); sfx.win(); }
+    if (justWon) confetti();
     lastPhase = S.phase;
 
     S.players.forEach((p) => prevLives.set(p.id, p.lives));
@@ -548,9 +550,12 @@
         </button>`;
     }).join('');
 
-    const nextLine = next.length
-      ? `<span>Next</span> <b>${esc(next[0].name)}</b>${next[1] ? ` <span class="dot">·</span> <span>then</span> <b>${esc(next[1].name)}</b>` : ''}`
-      : '';
+    // Small raised labels, big names, and each player's marks inline.
+    const nextLine = next.map((x, i) => `
+      <span class="nx">
+        <span class="nx-label">${i ? 'Then' : 'Next'}</span>
+        <span class="nx-name">${esc(x.name)}</span>${marks(x, 'xs')}
+      </span>`).join('<span class="nx-sep" aria-hidden="true"></span>');
 
     app.innerHTML = `
       <section class="game">
@@ -568,7 +573,7 @@
               <div class="now-felt">
                 <div class="now-label">Now shooting</div>
                 <div class="now-name" style="--fit:${fit(p.name)}">${esc(p.name)}</div>
-                <div class="now-status">${marks(p, 'lg')}<span class="now-lives">${p.lives === 1 ? 'Last life' : `${p.lives} lives`}</span></div>
+                <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives === 1 ? ' last' : ''}">${p.lives === 1 ? 'Last life' : `${p.lives} lives left`}</span></div>
                 <div class="now-next">${nextLine}</div>
               </div>
             </section>
@@ -607,6 +612,7 @@
     const podium = S.outOrder.slice().reverse().slice(0, 2).map(byId).filter(Boolean);
     app.innerHTML = `
       <section class="winner">
+        ${fanfare ? '<button class="mute-fanfare" data-do="muteFanfare" aria-label="Mute fanfare">🔇 Mute fanfare</button>' : ''}
         <div class="win-layout">
           <img class="win-poster" src="poster.svg" alt="Killer">
           <div class="win-info">
@@ -877,7 +883,15 @@
       const bus = ac.createGain();
       bus.connect(master);
       const nodes = [];
-      fanfare = { bus, nodes };
+      const cue = { bus, nodes };
+      fanfare = cue;
+      // Hide the mute button once the fanfare has finished on its own.
+      setTimeout(() => {
+        if (fanfare !== cue) return;
+        fanfare = null;
+        const btn = document.querySelector('.mute-fanfare');
+        if (btn) btn.remove();
+      }, 13200);
       const play = (part, voice) => wtEvents(part).forEach((e) => {
         // Short notes are slightly detached; the final chord swells with vibrato.
         const d = e.held ? e.d : e.d * 0.82;
@@ -1019,6 +1033,7 @@
         break;
       case 'start': startGame(); break;
       case 'undo': undo(); break;
+      case 'muteFanfare': sfx.stop(); t.remove(); break;
       case 'menu': openSheet({ type: 'menu' }); break;
       case 'tv': toggleTV(); break;
       case 'rematch': rematch(); break;

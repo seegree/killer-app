@@ -360,16 +360,43 @@ kbd {
   from { opacity: 0; transform: translateX(34px) scale(0.96); filter: blur(4px); }
   to { opacity: 1; transform: none; filter: none; }
 }
-.now-status { display: flex; align-items: center; justify-content: center; gap: 12px; }
-.now-lives { font-family: var(--display); font-size: 30px; letter-spacing: 0.05em; padding-top: 4px; }
+.now-status { display: flex; align-items: center; justify-content: center; gap: 0.4em; font-size: 40px; }
+.now-status .mk.lg .chalk { width: 1.75em; height: 1.75em; border-radius: 0.34em; }
+.now-status .mk.lg .chip { font-size: 0.55em; line-height: 1; height: 1.7em; min-width: 2.4em; padding: 0.06em 0.55em 0; }
+.now-lives { font-family: var(--display); font-size: 1em; line-height: 1; letter-spacing: 0.05em; padding-top: 0.1em; }
+.now-lives.last { color: #ff7b72; text-shadow: 0 0 24px rgba(229, 72, 77, 0.45); }
+
+/* Next / Then: labels sit small and raised; names and marks carry the weight */
 .now-next {
-  margin-top: 12px;
-  font-size: 14px;
-  color: rgba(244, 241, 232, 0.7);
-  min-height: 20px;
+  margin-top: 0.5em;
+  font-size: 24px;
+  min-height: 1.2em;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.25em 0.7em;
 }
-.now-next b { color: var(--chalk); font-weight: 700; }
-.now-next .dot { margin: 0 4px; opacity: 0.6; }
+.nx { display: inline-flex; align-items: center; gap: 0.28em; min-width: 0; }
+.nx-label {
+  align-self: flex-start;
+  margin-top: 0.12em;
+  font-family: var(--ui);
+  font-size: 0.4em;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 232, 0.6);
+}
+.nx-name { font-family: var(--display); line-height: 1; padding-top: 0.08em; letter-spacing: 0.03em; white-space: nowrap; }
+.nx-sep { width: 1px; height: 0.8em; background: rgba(244, 241, 232, 0.25); }
+.mk.xs { gap: 0.2em; }
+.mk.xs .chalk { width: 0.9em; height: 0.9em; background: none; box-shadow: none; }
+.mk.xs .chip { font-size: 0.5em; line-height: 1; height: 1.6em; min-width: 2.5em; padding: 0.06em 0.5em 0; box-shadow: none; }
+@media (min-width: 960px) {
+  .now-status { font-size: 44px; }
+  .now-next { font-size: 28px; }
+}
 
 /* Scoreboard */
 .board-grid {
@@ -552,13 +579,13 @@ body.tv .left { display: block; position: static; }
 body.tv .now-felt { padding: 18px 28px 20px; }
 body.tv .now-name { font-size: calc(clamp(72px, 20cqi, 230px) * var(--fit, 1)); }
 body.tv .now-label { font-size: clamp(12px, 1.1vw, 18px); }
-body.tv .now-lives { font-size: clamp(30px, 2.6vw, 48px); }
-body.tv .now-next { font-size: clamp(14px, 1.4vw, 24px); }
-body.tv .mk.lg .chalk { width: clamp(58px, 5vw, 90px); height: clamp(58px, 5vw, 90px); }
+body.tv .now-status { font-size: clamp(48px, 5vw, 100px); }
+body.tv .now-next { font-size: clamp(30px, 3vw, 60px); margin-top: 0.35em; }
 body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(170px, 15vw, 280px), 1fr)); }
-body.tv .pc { min-height: clamp(62px, 5.4vw, 96px); }
-body.tv .pc-name { font-size: calc(clamp(28px, 2.6vw, 48px) * var(--nfit, 1)); }
-body.tv .pc .chalk { width: clamp(36px, 3vw, 54px); height: clamp(36px, 3vw, 54px); }
+body.tv .board-grid { gap: 10px; }
+body.tv .pc { min-height: clamp(52px, 4.2vw, 80px); padding-top: 6px; padding-bottom: 6px; }
+body.tv .pc-name { font-size: calc(clamp(24px, 2.1vw, 40px) * var(--nfit, 1)); }
+body.tv .pc .chalk { width: clamp(32px, 2.5vw, 46px); height: clamp(32px, 2.5vw, 46px); }
 body.tv .pill { font-size: 16px; }
 body.tv .pill b { font-size: 20px; }
 .tv-keys {
@@ -583,6 +610,26 @@ body.win::before { display: none; }
   padding: calc(var(--safe-t) + 16px) var(--pad) calc(var(--safe-b) + 20px);
   text-align: center;
 }
+.mute-fanfare {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: fixed;
+  top: calc(var(--safe-t) + 12px);
+  right: var(--pad);
+  z-index: 60;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(7, 16, 12, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 14px;
+  font-weight: 700;
+  animation: sceneIn 0.4s 0.6s ease both;
+}
+.mute-fanfare:hover { background: rgba(255, 255, 255, 0.1); }
 .win-layout { width: min(560px, 100%); display: flex; flex-direction: column; align-items: center; }
 .win-poster {
   display: block;
