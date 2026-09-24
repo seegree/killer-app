@@ -904,8 +904,11 @@ body.win::before { display: none; }
 /* ------------------------------------------------------------------ sheet */
 #sheet {
   width: min(460px, calc(100vw - 20px));
-  max-height: calc(100dvh - 20px);
+  max-height: calc(100dvh - var(--safe-t) - var(--safe-b) - 20px);
   margin: auto auto calc(var(--safe-b) + 10px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 24px;
@@ -918,7 +921,20 @@ body.win::before { display: none; }
 #sheet::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 @keyframes sheetIn { from { transform: translateY(24px); opacity: 0; } }
 .sheet-body { padding: 18px 18px 20px; }
-.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+/* The title and ✕ stay pinned at the top of the panel while its contents scroll. */
+.sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -18px -18px 14px;
+  padding: 18px 18px 10px;
+  background: #13281f;
+}
+body.page-locked { position: fixed; left: 0; right: 0; overflow: hidden; }
 .sheet-title {
   margin: 0;
   min-width: 0;
@@ -1110,6 +1126,7 @@ body.watch .pc:active { transform: none; }
 .share-qr { width: min(220px, 62vw); margin: 2px auto 10px; padding: 8px; border-radius: 16px; background: #fff; line-height: 0; }
 .share-qr svg { width: 100%; height: auto; display: block; }
 .share-qr.small { width: min(170px, 50vw); }
+.share-qr.mini { width: min(110px, 32vw); padding: 5px; border-radius: 10px; }
 .share-qr:empty { display: none; }
 .share-actions { display: flex; justify-content: center; gap: 8px; }
 .share-actions .btn { min-height: 44px; }

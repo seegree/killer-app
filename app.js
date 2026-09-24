@@ -1138,12 +1138,34 @@
     sheetMode = mode;
     confirmKey = null;
     renderSheet();
-    if (sheetMode && !sheet.open) sheet.showModal();
+    if (sheetMode && !sheet.open) {
+      lockPage();
+      sheet.showModal();
+      sheet.scrollTop = 0;
+    }
+  }
+
+  // While a panel is open, pin the page behind it so a scroll can only move the panel
+  // (iPhones otherwise pass scrolls through to the game underneath).
+  let lockedY = null;
+  function lockPage() {
+    if (lockedY !== null) return;
+    lockedY = window.scrollY;
+    document.body.style.top = `${-lockedY}px`;
+    document.body.classList.add('page-locked');
+  }
+  function unlockPage() {
+    if (lockedY === null) return;
+    document.body.classList.remove('page-locked');
+    document.body.style.top = '';
+    window.scrollTo(0, lockedY);
+    lockedY = null;
   }
 
   function closeSheet() {
     sheetMode = null;
     if (sheet.open) sheet.close();
+    unlockPage();
   }
 
   const onOff = (on) => `<span class="state ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>`;
@@ -1196,7 +1218,7 @@
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
           ${share ? `
-            <div class="share-qr">${qrSvg(shareLink())}</div>
+            <div class="share-qr${tvSetupOpen ? ' mini' : ''}">${qrSvg(shareLink())}</div>
             <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
             <p class="share-status ${shareStatus}">${status}</p>
             <div class="share-actions">
@@ -1300,7 +1322,8 @@
     }
   }
 
-  sheet.addEventListener('close', () => { sheetMode = null; });
+  sheet.addEventListener('close', () => { sheetMode = null; unlockPage(); });
+  sheet.addEventListener('cancel', unlockPage); // Esc closes the panel; unlock right away
 
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet) return closeSheet(); // backdrop
