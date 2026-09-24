@@ -1065,6 +1065,8 @@
     if (sheet.open) sheet.close();
   }
 
+  const onOff = (on) => `<span class="state ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>`;
+
   function renderSheet() {
     if (!sheetMode) return closeSheet();
 
@@ -1125,8 +1127,8 @@
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
-          <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock: ${clockPrefs.on ? `on · ${clockPrefs.secs} sec` : 'off'}<small>Turn it on or off, or change the time</small></button>
-          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound on' : '🔇 Sound off'}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
+          <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
+          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">

@@ -946,6 +946,10 @@ body.win::before { display: none; }
 }
 .sheet-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); }
 .sheet-btn small { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--chalk-dim); }
+.state { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; vertical-align: 1px; }
+.state.on { background: var(--green); color: #06140d; }
+.state.off { background: rgba(244, 241, 232, 0.15); color: var(--chalk-dim); }
+.state-note { margin-left: 4px; font-size: 13px; color: var(--chalk-dim); }
 .sheet-btn.danger { color: #ff8a8d; }
 .sheet-note { margin: 12px 2px 0; font-size: 13px; color: var(--chalk-dim); }
 .stepper { display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 10px; }
