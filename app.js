@@ -736,6 +736,7 @@
         <header class="hero">
           <h1 class="wordmark"><img src="wordmark.svg" alt="Killer"></h1>
           <p class="tagline">${START_LIVES} lives each · last one standing wins</p>
+          <button class="watch-entry" data-do="watchEntry">👀 Watch a game</button>
         </header>
 
         <form class="add" id="addForm" autocomplete="off">
@@ -851,7 +852,7 @@
               ? `<div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div>`
               : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : WATCH
-              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}`
+              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}<button class="icon-btn" data-do="leaveWatch" aria-label="Leave and go back to my game">✕</button>`
               : `<button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>`}
         </header>
 
@@ -920,7 +921,8 @@
               <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
               <button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button>
               <button class="btn btn-ghost" data-do="newgame">New game</button>
-            </div>`}
+            </div>
+            <button class="watch-entry" data-do="watchEntry">👀 Watch a game</button>`}
           </div>
         </div>
       </section>`;
@@ -940,6 +942,7 @@
         <p class="ws-msg">${msg}</p>
         ${remote.status === 'connecting' ? '<div class="ws-spinner" aria-hidden="true"></div>' : ''}
         <p class="ws-note">Live view · you can’t change anything</p>
+        <button class="btn btn-ghost" data-do="leaveWatch">← Back to my game</button>
       </section>`;
   }
 
@@ -1161,6 +1164,25 @@
   function renderSheet() {
     if (!sheetMode) return closeSheet();
 
+    if (sheetMode.type === 'watch') {
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Watch a game</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">Enter the 5-letter code from the scorekeeper. Your own saved game stays exactly as it is.</p>
+          <form id="watchForm" class="watch-form" autocomplete="off">
+            <input type="text" id="watchCode" maxlength="5" placeholder="CODE" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-label="Game code">
+            <button class="btn btn-start" type="submit">Watch</button>
+          </form>
+          ${sheetMode.error ? `<p class="watch-error">${sheetMode.error}</p>` : ''}
+          <button class="link-btn" data-sheet="watchTv">Setting up the TV screen? Open it as the TV display</button>
+        </div>`;
+      setTimeout(() => { const box = $('#watchCode'); if (box) box.focus(); }, 50);
+      return;
+    }
+
     if (sheetMode.type === 'share') {
       const status = {
         connecting: '<span class="dot"></span> Connecting…',
@@ -1263,6 +1285,7 @@
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
+          <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Enter a code to watch someone else’s game live</small></button>
           <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
@@ -1295,9 +1318,11 @@
       case 'rerack': closeSheet(); rerack(); break;
       case 'clockPanel': openSheet({ type: 'clock' }); break;
       case 'share': openSheet({ type: 'share' }); break;
+      case 'watch': openSheet({ type: 'watch' }); break;
       case 'startShare': startSharing(); break;
       case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
       case 'copyLink': copyLink(shareLink()); break;
+      case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
       case 'roomPhone': case 'roomTv':
@@ -1645,7 +1670,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch'];
 
   app.addEventListener('click', (e) => {
     const t = e.target.closest('button');
@@ -1680,6 +1705,8 @@
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
+      case 'watchEntry': openSheet({ type: 'watch' }); break;
+      case 'leaveWatch': location.href = location.pathname; break;
       // Tapping the clock resumes it when paused; otherwise it opens the clock panel.
       case 'clock':
         if (clk && clk.pausedAt) resumeClock(); else pauseClock();
@@ -1716,7 +1743,19 @@
         box.focus();
       }
     } else if (form.id === 'lateForm') { addLate(text); closeSheet(); }
+    else if (form.id === 'watchForm') goWatch(text, false);
   });
+
+  // Open a shared game by its code (same page, so it stays inside the Home Screen app).
+  function goWatch(text, tv) {
+    const code = String(text).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length !== 5) {
+      sheetMode = { type: 'watch', error: 'Codes are 5 letters and numbers, like KXQ7R.' };
+      renderSheet();
+      return;
+    }
+    location.href = watchLink(code, tv);
+  }
 
   // Pasting a list (newlines/commas) adds everyone at once.
   document.addEventListener('paste', (e) => {

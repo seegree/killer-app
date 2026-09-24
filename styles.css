@@ -1199,3 +1199,39 @@ body.watch .pc:active { transform: none; }
 }
 }
 
+/* Start screen: a quiet way in for watchers */
+.watch-entry {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--chalk-dim);
+}
+.watch-entry:hover { color: var(--chalk); }
+.watch-form { display: flex; gap: 10px; margin-top: 4px; }
+.watch-form input {
+  flex: 1;
+  min-width: 0;
+  height: 64px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(244, 241, 232, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  font-family: var(--display);
+  font-size: 40px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--gold);
+}
+.watch-form input::placeholder { color: var(--chalk-faint); }
+.watch-form input:focus { outline: none; border-color: var(--brass); }
+.watch-form .btn-start { width: auto; padding: 0 22px; font-size: 26px; }
+.watch-error { margin: 10px 2px 0; font-size: 14px; font-weight: 600; color: #ff8a8d; }
+.link-btn { display: block; margin: 18px auto 0; border: none; background: none; font-size: 13px; color: var(--chalk-faint); text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:hover { color: var(--chalk-dim); }
+body.watch .topbar .icon-btn[data-do="leaveWatch"] { width: 40px; height: 40px; font-size: 16px; }
+
