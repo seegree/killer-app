@@ -26,7 +26,13 @@ async function uid() {
 
 const gameRef = (code) => ref(db, `games/${code}`);
 
+// How far this device's clock is from Firebase's, so shot clocks line up on every screen.
+let offset = 0;
+onValue(ref(db, '.info/serverTimeOffset'), (snap) => { offset = snap.val() || 0; });
+
 window.killerLive = {
+  serverOffset: () => offset,
+
   // The state is stored as one JSON string: simpler than mapping it onto Firebase's key rules.
   async publish(code, state) {
     const owner = await uid();

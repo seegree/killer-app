@@ -63,7 +63,7 @@
   const CLOCK_MIN = 10;
   const CLOCK_MAX = 120;
   const CLOCK_STEP = 5;
-  let clockPrefs = (() => {
+  let clockPrefs = WATCH ? { on: false, secs: 30 } : (() => {
     try {
       const c = JSON.parse(localStorage.getItem(CLOCK_KEY));
       if (c && typeof c.secs === 'number') return { on: !!c.on, secs: c.secs };
@@ -235,12 +235,13 @@
 
   // ---------------------------------------------------------------- shot clock
 
-  const clockOn = () => !WATCH && clockPrefs.on && S.phase === 'playing';
+  const clockOn = () => clockPrefs.on && S.phase === 'playing';
 
   function setClockPrefs(changes) {
     clockPrefs = { ...clockPrefs, ...changes };
     clockPrefs.secs = Math.min(CLOCK_MAX, Math.max(CLOCK_MIN, clockPrefs.secs));
     try { localStorage.setItem(CLOCK_KEY, JSON.stringify(clockPrefs)); } catch (_) { /* ignore */ }
+    queuePublish();
   }
 
   function clockLeft() {
@@ -251,16 +252,18 @@
 
   function startClock(id) {
     clk = { id, start: Date.now(), pausedAt: 0, expired: false };
+    queuePublish();
   }
 
   function pauseClock() {
-    if (clk && !clk.pausedAt) clk.pausedAt = Date.now();
+    if (clk && !clk.pausedAt) { clk.pausedAt = Date.now(); queuePublish(); }
   }
 
   function resumeClock() {
     if (!clk || !clk.pausedAt) return;
     clk.start += Date.now() - clk.pausedAt;
     clk.pausedAt = 0;
+    queuePublish();
   }
 
   function restartClock() {
@@ -323,7 +326,7 @@
   // Time's up: buzzer and a TIME! stamp. Nothing is scored; the group decides.
   function timeUp() {
     sfx.buzzer();
-    buzz([200, 100, 200]);
+    if (!WATCH) buzz([200, 100, 200]);
     showResult(null, 'time', 1800);
     render();
   }
@@ -794,13 +797,13 @@
     // the opening break, and the break after a re-rack, until that shot is scored.
     const lastEvent = [...S.log].reverse().find((e) => e.a === 'rack' || e.a === 'miss' || e.a === 'made');
     const breakShot = !lastEvent || lastEvent.a === 'rack';
-    const showClock = clockOn() && heldIdx < 0 && !breakShot;
-    if (showClock && (!clk || clk.id !== p.id)) startClock(p.id);
+    const showClock = clockOn() && heldIdx < 0 && !breakShot && (!WATCH || (clk && clk.id === p.id));
+    if (!WATCH && showClock && (!clk || clk.id !== p.id)) startClock(p.id);
     const paused = showClock && clk && clk.pausedAt;
     const cv = clockView();
     const clockHtml = showClock ? `
       <button class="clock${cv.paused ? ' paused' : ''}${cv.warn ? ' warn' : ''}${cv.time ? ' time' : ''}" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${cv.text}</span></button>
-      ${paused ? `<div class="clock-actions">
+      ${paused && !WATCH ? `<div class="clock-actions">
         <button data-do="clockResume" class="ca-go">▶ Resume</button>
         <button data-do="clockRerack">🎱 Re-rack</button>
         <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
@@ -840,7 +843,7 @@
 
         <div class="stage">
           <div class="left">
-            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused ? ' clock-paused' : ''}" aria-live="polite">
+            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused && !WATCH ? ' clock-paused' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
                 <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : 'Now shooting'}</div>
@@ -1750,7 +1753,35 @@
   // Watchers see the game, not this device's view settings or the setup list.
   function publicState() {
     const { tv, roster, ...rest } = S;
+    const off = serverOffset();
+    rest.clock = {
+      on: clockPrefs.on,
+      secs: clockPrefs.secs,
+      id: clk ? clk.id : null,
+      startedAt: clk ? clk.start + off : 0,
+      pausedAt: clk && clk.pausedAt ? clk.pausedAt + off : 0,
+    };
     return rest;
+  }
+
+  // Milliseconds between this device's clock and Firebase's (0 until known).
+  const serverOffset = () => (window.killerLive ? window.killerLive.serverOffset() : 0);
+
+  // Viewers: rebuild the running clock from the shared one, in this device's time.
+  function applyRemoteClock(c) {
+    if (!c) { clockPrefs = { on: false, secs: 30 }; clk = null; return; }
+    clockPrefs = { on: !!c.on, secs: c.secs || 30 };
+    if (!c.id) { clk = null; return; }
+    const off = serverOffset();
+    const start = c.startedAt - off;
+    const same = clk && clk.id === c.id && Math.abs(clk.start - start) < 50;
+    clk = {
+      id: c.id,
+      start,
+      pausedAt: c.pausedAt ? c.pausedAt - off : 0,
+      expired: same ? clk.expired : false,
+      ticked: same ? clk.ticked : undefined,
+    };
   }
 
   // Bundle rapid taps into one update.
@@ -1839,7 +1870,9 @@
   function applyRemote(state) {
     const wasLive = remote.status === 'live';
     const prevLog = S.log || [];
-    S = { ...freshState(), ...state, tv: S.tv };
+    const { clock, ...game } = state;
+    S = { ...freshState(), ...game, tv: S.tv };
+    applyRemoteClock(clock);
     remote.status = 'live';
     if (!Array.isArray(S.log)) S.log = [];
     if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
