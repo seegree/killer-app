@@ -1159,21 +1159,43 @@ body.watch .pc:active { transform: none; }
   animation: livePulse 2s ease-in-out infinite;
 }
 
-/* A phone or small tablet turned sideways as the TV display: board beside the list */
+/* A phone or small tablet turned sideways as the TV display: exactly one screen, no page
+   scrolling. The chalkboard sizes to the screen height; only the player list scrolls. */
 @media (orientation: landscape) and (max-height: 600px) {
-  body.tv .topbar { padding-top: calc(var(--safe-t) + 4px); padding-bottom: 4px; }
-  body.tv .stage { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; gap: 12px; }
-  body.tv .left { position: sticky; top: 8px; }
-  body.tv .now-felt { padding: 8px 14px 12px; }
-  body.tv .now-name { font-size: calc(clamp(44px, 17cqi, 130px) * var(--fit, 1)); }
-  body.tv .now-status { font-size: clamp(26px, 4vw, 44px); }
-  body.tv .now-next { font-size: clamp(22px, 3.2vw, 40px); }
-  body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
-  body.tv .pc { min-height: 42px; padding: 4px 6px 4px 10px; }
-  body.tv .pc-name { font-size: calc(21px * var(--nfit, 1)); }
-  body.tv .pc .chalk { width: 26px; height: 26px; }
-  .tv-join svg { width: 52px; }
-  .tv-join span { font-size: 11px; }
-  .tv-join b { font-size: 20px; }
+  body.tv { overflow: hidden; }
+  body.tv .game { height: 100dvh; min-height: 0; overflow: hidden; }
+  body.tv .topbar {
+    padding: calc(var(--safe-t) + 4px) calc(env(safe-area-inset-right, 0px) + 12px) 4px calc(env(safe-area-inset-left, 0px) + 12px);
+  }
+  body.tv .brand-sm { font-size: 22px; }
+  body.tv .pill { padding: 4px 10px; }
+  body.tv .stage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 calc(env(safe-area-inset-right, 0px) + 10px) calc(var(--safe-b) + 8px) calc(env(safe-area-inset-left, 0px) + 10px);
+  }
+  body.tv .left { position: static; display: flex; min-height: 0; }
+  body.tv .now { flex: 1; display: flex; padding: 6px; border-radius: 18px; min-height: 0; }
+  body.tv .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4px 12px 10px; border-radius: 13px; }
+  body.tv .now-label { font-size: max(10px, 3vh); }
+  body.tv .now-name { font-size: calc(min(18cqi, 33vh) * var(--fit, 1)); margin: 0 0 1vh; }
+  body.tv .now-status { font-size: max(20px, 9vh); }
+  body.tv .now-next { font-size: max(18px, 8vh); margin-top: 1vh; }
+  body.tv .clock { font-size: max(18px, 8vh); top: 4px; right: 6px; }
+  body.tv .clock-bar { height: 6px; }
+  body.tv .board { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: 8px; }
+  body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+  body.tv .pc { min-height: max(34px, 11vh); padding: 3px 6px 3px 10px; border-radius: 10px; }
+  body.tv .pc-name { font-size: calc(max(17px, 6vh) * var(--nfit, 1)); }
+  body.tv .pc .chalk { width: max(22px, 7vh); height: max(22px, 7vh); }
+  body.tv .tag { top: -7px; font-size: 9px; }
+  .sound-banner { bottom: 8px; padding: 8px 16px; font-size: 14px; }
+  .tv-join svg { width: max(40px, 12vh); }
+  .tv-join span { font-size: 10px; }
+  .tv-join b { font-size: 16px; }
+}
 }
 
