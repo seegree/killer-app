@@ -250,21 +250,38 @@
   }
 
   // Updates just the clock's number and bar, without redrawing the page.
+  // What the clock should look like right now. Used both when the chalkboard is drawn and on
+  // every tick, so a redraw never flashes a stale (e.g. full-width) bar.
+  function clockView() {
+    const left = clockLeft();
+    const paused = !!(clk && clk.pausedAt);
+    return {
+      left,
+      text: paused ? 'Paused' : left ? Math.ceil(left / 1000) : 'Time',
+      paused,
+      warn: !paused && left > 0 && left <= 5000,
+      time: !paused && left === 0,
+      barWarn: left <= 5000,
+      scale: left / (clockPrefs.secs * 1000),
+    };
+  }
+
   function paintClock() {
     if (!clockOn() || !clk) return;
     const num = document.getElementById('clockNum');
     const bar = document.getElementById('clockBar');
-    const left = clockLeft();
+    const v = clockView();
+    const left = v.left;
     if (num) {
       const chip = num.closest('.clock');
-      num.textContent = clk.pausedAt ? 'Paused' : left ? Math.ceil(left / 1000) : 'Time';
-      chip.classList.toggle('paused', !!clk.pausedAt);
-      chip.classList.toggle('warn', !clk.pausedAt && left > 0 && left <= 5000);
-      chip.classList.toggle('time', !clk.pausedAt && left === 0);
+      num.textContent = v.text;
+      chip.classList.toggle('paused', v.paused);
+      chip.classList.toggle('warn', v.warn);
+      chip.classList.toggle('time', v.time);
     }
     if (bar) {
-      bar.style.transform = `scaleX(${left / (clockPrefs.secs * 1000)})`;
-      bar.parentElement.classList.toggle('warn', left <= 5000);
+      bar.style.transform = `scaleX(${v.scale})`;
+      bar.parentElement.classList.toggle('warn', v.barWarn);
     }
     // Countdown ticks for the last 5 seconds, once per second (not while paused).
     const secs = Math.ceil(left / 1000);
@@ -756,14 +773,15 @@
     const showClock = clockOn() && heldIdx < 0 && !breakShot;
     if (showClock && (!clk || clk.id !== p.id)) startClock(p.id);
     const paused = showClock && clk && clk.pausedAt;
+    const cv = clockView();
     const clockHtml = showClock ? `
-      <button class="clock" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${Math.ceil(clockLeft() / 1000)}</span></button>
+      <button class="clock${cv.paused ? ' paused' : ''}${cv.warn ? ' warn' : ''}${cv.time ? ' time' : ''}" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${cv.text}</span></button>
       ${paused ? `<div class="clock-actions">
         <button data-do="clockResume" class="ca-go">▶ Resume</button>
         <button data-do="clockRerack">🎱 Re-rack</button>
         <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
       </div>` : ''}
-      <div class="clock-bar" aria-hidden="true"><i id="clockBar"></i></div>`
+      <div class="clock-bar${cv.barWarn ? ' warn' : ''}" aria-hidden="true"><i id="clockBar" style="transform:scaleX(${cv.scale})"></i></div>`
       : clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '';
 
     const cards = board.map((x) => {
