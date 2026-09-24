@@ -37,9 +37,12 @@
   let shuffling = false;
   let sheetMode = null; // { type: 'menu' } | { type: 'player', id }
   let confirmKey = null;
-  let setupNotice = '';
+  let setupNotice = ''; // duplicate-name warning shown under the name box
   let view = 'main'; // 'main' | 'recap' on a finished game
-  let recapTab = 'awards'; // duplicate-name warning shown under the name box
+  // Brief result shown on the chalkboard. For Made/Miss the board holds on the shooter
+  // (fb.id) before moving on; any new tap ends it early and still scores the right player.
+  let fb = null; // { id, kind: 'safe' | 'miss' | 'out' | 'extra', timer }
+  let recapTab = 'awards';
 
   function freshState() {
     return { phase: 'setup', roster: [], players: [], current: 0, turnBonus: 0, outOrder: [], last: null, winner: null, log: [], tv: false };
@@ -88,6 +91,7 @@
 
   function undo() {
     if (!history.length) return;
+    clearResult(false);
     sfx.stop();
     const { tv, log } = S;
     const { logLen = 0, ...prev } = JSON.parse(history.pop());
@@ -118,12 +122,12 @@
     return -1;
   }
 
-  function upcoming(count) {
+  function upcoming(count, from = S.current) {
     const list = [];
-    let i = S.current;
+    let i = from;
     for (let k = 0; k < count; k++) {
       i = nextAliveIndex(i);
-      if (i < 0 || i === S.current) break;
+      if (i < 0 || i === from) break;
       list.push(S.players[i]);
     }
     return list;
@@ -195,9 +199,35 @@
 
   // ---------------------------------------------------------------- shot actions
 
+  function showResult(id, kind, ms, n = 0) {
+    clearResult(false);
+    fb = { id, kind, n };
+    fb.timer = setTimeout(() => {
+      fb = null;
+      flash.classList.remove('show');
+      if (S.phase === 'playing') render();
+    }, ms);
+  }
+
+  function clearResult(rerender = true) {
+    if (!fb) return;
+    clearTimeout(fb.timer);
+    fb = null;
+    flash.classList.remove('show');
+    if (rerender && S.phase === 'playing') render();
+  }
+
+  // Bring the chalkboard and the front of the line back into view after scoring.
+  // An instant jump: a smooth scroll can be cut short when the board redraws mid-scroll.
+  function backToTop() {
+    if (window.scrollY > 0) window.scrollTo(0, 0);
+  }
+
   function actMiss() {
     const p = current();
     if (S.phase !== 'playing' || !p) return;
+    const goingOut = p.lives <= 1;
+    showResult(p.id, goingOut ? 'out' : 'miss', goingOut ? 1900 : 950);
     let wentOut = false;
     commit(() => {
       p.shots++;
@@ -208,17 +238,20 @@
       if (p.lives <= 0) { wentOut = true; markOut(p); }
       if (!checkFinish()) advance();
     });
+    if (S.phase !== 'playing') clearResult(false);
     if (wentOut) {
       buzz([60, 40, 140]);
       if (S.phase === 'playing') { flashOut(p.name); sfx.out(); }
     } else {
       buzz(40);
     }
+    backToTop();
   }
 
   function actMade() {
     const p = current();
     if (S.phase !== 'playing' || !p) return;
+    showResult(p.id, 'safe', 750);
     commit(() => {
       p.shots++;
       p.pots++;
@@ -227,21 +260,47 @@
       advance();
     });
     buzz(12);
+    backToTop();
   }
 
-  // Doesn't end the turn: tap once per extra ball, then Made/Safe to move on.
+  // +1 scores a made shot with an extra life and moves on. A quick second or third tap,
+  // while the board is still on the shooter, adds another life for a 3- or 4-ball shot.
+  const MAX_EXTRA_TAPS = 3;
+  const EXTRA_HOLD_MS = 1500;
+
   function actExtra() {
+    if (S.phase !== 'playing') return;
+    if (fb && fb.kind === 'extra' && fb.id) {
+      const p = byId(fb.id);
+      if (!p || fb.n >= MAX_EXTRA_TAPS) return;
+      const n = fb.n + 1;
+      showResult(p.id, 'extra', EXTRA_HOLD_MS, n);
+      commit(() => {
+        p.lives++;
+        p.extras++;
+        S.last = { type: 'made', id: p.id, name: p.name, lives: p.lives, bonus: n };
+        S.log.push({ p: p.id, a: 'extra', l: p.lives, late: true }); // belongs to the shot just scored
+      });
+      buzz(20);
+      sfx.extra();
+      return;
+    }
     const p = current();
-    if (S.phase !== 'playing' || !p) return;
+    if (!p) return;
+    showResult(p.id, 'extra', EXTRA_HOLD_MS, 1);
     commit(() => {
       p.lives++;
       p.extras++;
-      S.turnBonus++;
-      S.last = { type: 'extra', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
+      p.shots++;
+      p.pots++;
+      S.last = { type: 'made', id: p.id, name: p.name, lives: p.lives, bonus: 1 };
       S.log.push({ p: p.id, a: 'extra', l: p.lives });
+      S.log.push({ p: p.id, a: 'made', l: p.lives });
+      advance();
     });
     buzz(20);
     sfx.extra();
+    backToTop();
   }
 
   const ACTIONS = { miss: actMiss, made: actMade, extra: actExtra };
@@ -443,9 +502,15 @@
   const cardFit = (name) => Math.max(0.68, Math.min(1, 8 / Math.max(1, name.length))).toFixed(3);
 
   function lastText() {
+    // Right after +1, offer the quick extra tap for a bigger shot.
+    if (fb && fb.kind === 'extra' && fb.id) {
+      const who = byId(fb.id);
+      const more = fb.n < MAX_EXTRA_TAPS ? ` · ${fb.n + 2} balls? Tap again` : '';
+      if (who) return `<b>${esc(who.name)}</b> <span class="t-gold">+${fb.n}</span>${more}`;
+    }
     const p = current();
     if (S.turnBonus > 0 && p) {
-      return `<b>${esc(p.name)}</b> earned <span class="t-gold">+${S.turnBonus}</span> · tap <em>Made</em> to end turn`;
+      return `<b>${esc(p.name)}</b> <span class="t-gold">+${S.turnBonus}</span> · now tap <em>Made</em>`;
     }
     const L = S.last;
     if (!L) return p ? `<b>${esc(p.name)}</b> to break — good luck` : '';
@@ -537,16 +602,34 @@
   }
 
   function renderGame() {
-    const p = current();
+    // While a result is showing, the board stays on the player who just shot.
+    const heldIdx = fb && fb.id ? S.players.findIndex((x) => x.id === fb.id) : -1;
+    const curIdx = heldIdx >= 0 ? heldIdx : S.current;
+    const p = S.players[curIdx];
     const alive = aliveCount();
-    const next = upcoming(2);
+    const outCount = S.players.length - alive;
+    const next = upcoming(2, curIdx);
     const nextId = next[0] && next[0].id;
     const entering = p.id !== prevCurrentId;
     prevCurrentId = p.id;
 
+    // The list is the line: the shooter first, then everyone in turn order; players who are out go last.
     const outRank = (x) => S.outOrder.indexOf(x.id);
-    const board = S.players.filter(isAlive)
-      .concat(S.players.filter((x) => !isAlive(x)).sort((a, b) => outRank(a) - outRank(b)));
+    const line = [];
+    const gone = [];
+    for (let k = 0; k < S.players.length; k++) {
+      const x = S.players[(curIdx + k) % S.players.length];
+      (k === 0 || isAlive(x) ? line : gone).push(x);
+    }
+    const board = line.concat(gone.sort((a, b) => outRank(a) - outRank(b)));
+
+    const stampText = fb && {
+      safe: '✓ Safe',
+      miss: 'Miss',
+      extra: `+${fb.n} ${fb.n > 1 ? 'lives' : 'life'}`,
+    }[fb.kind];
+    const stamp = stampText ? `<div class="now-stamp ${fb.kind}" aria-hidden="true">${stampText}</div>` : '';
+    const livesText = p.lives <= 0 ? 'Out' : p.lives === 1 ? 'Last life' : `${p.lives} lives left`;
 
     const cards = board.map((x) => {
       const isCur = x.id === p.id;
@@ -570,7 +653,7 @@
       <section class="game">
         <header class="topbar">
           <div class="brand-sm">${LOGO}<span>Killer</span></div>
-          <div class="pill"><b>${alive}</b> of ${S.players.length} alive</div>
+          <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out</div>
           ${tvOn()
             ? '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : '<button class="icon-btn" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>'}
@@ -578,11 +661,12 @@
 
         <div class="stage">
           <div class="left">
-            <section class="now${entering ? ' enter' : ''}" aria-live="polite">
+            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}" aria-live="polite">
               <div class="now-felt">
+                ${stamp}
                 <div class="now-label">Now shooting</div>
                 <div class="now-name" style="--fit:${fit(p.name)}">${esc(p.name)}</div>
-                <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives === 1 ? ' last' : ''}">${p.lives === 1 ? 'Last life' : `${p.lives} lives left`}</span></div>
+                <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives <= 1 ? ' last' : ''}">${livesText}</span></div>
                 <div class="now-next">${nextLine}</div>
               </div>
             </section>
@@ -600,7 +684,7 @@
                   <span class="act-glyph">✓</span><span class="act-label">Made</span><span class="act-sub">safe</span><kbd>Space</kbd>
                 </button>
                 <button class="act act-extra" data-act="extra">
-                  <span class="act-glyph">+1</span><span class="act-label">Extra life</span><span class="act-sub">per extra ball</span><kbd>E</kbd>
+                  <span class="act-glyph">+1</span><span class="act-label">Extra life</span><span class="act-sub">2 balls in</span><kbd>E</kbd>
                   ${S.turnBonus ? `<span class="badge">+${S.turnBonus}</span>` : ''}
                 </button>
               </div>
@@ -656,11 +740,17 @@
     }]));
     let prevTurn = null; // the last shot that ended a turn
     let extras = 0; // extra lives earned so far this turn
+    let lastExtras = 0; // extra lives in the turn that just ended (for quick extra taps)
     for (const e of S.log || []) {
       const st = stats.get(e.p);
       if (e.a === 'extra') {
-        extras++;
         if (st && e.l === 2) st.comeback = true; // went from last life back to two
+        if (e.late) {
+          lastExtras++;
+          if (st && lastExtras >= 2) st.hatTrick = true;
+        } else {
+          extras++;
+        }
         continue;
       }
       if (st) {
@@ -685,6 +775,7 @@
         }
       }
       prevTurn = e;
+      lastExtras = extras;
       extras = 0;
     }
     return stats;
@@ -871,14 +962,7 @@
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
-          <div class="sound-row">
-            <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound on' : '🔇 Sound off'}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
-            ${soundOn ? `<div class="sound-previews" aria-label="Preview sounds">
-              <button class="chip-btn" data-sheet="hear" data-sfx="extra">▶ Extra life</button>
-              <button class="chip-btn" data-sheet="hear" data-sfx="out">▶ Knocked out</button>
-              <button class="chip-btn" data-sheet="hear" data-sfx="win">▶ Winner</button>
-            </div>` : ''}
-          </div>
+          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound on' : '🔇 Sound off'}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -904,7 +988,6 @@
       case 'remove': if (p && confirmTap(b, 'remove')) { removePlayer(p); closeSheet(); } break;
       case 'tv': closeSheet(); toggleTV(); break;
       case 'sound': setSound(!soundOn); renderSheet(); sfx.extra(); break;
-      case 'hear': sfx[b.dataset.sfx](); break;
       case 'rematch': if (confirmTap(b, 'rematch')) { closeSheet(); rematch(); } break;
       case 'newgame': if (confirmTap(b, 'newgame')) { closeSheet(); newGame(); } break;
     }
@@ -927,6 +1010,10 @@
     if (!soundOn) return null;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
+    if (actx && (actx.state === 'closed' || actx.state === 'interrupted')) {
+      try { actx.close(); } catch (_) { /* already closed */ }
+      actx = null;
+    }
     if (!actx) {
       actx = new AC();
       master = actx.createGain();
@@ -935,9 +1022,19 @@
       master.connect(limiter);
       limiter.connect(actx.destination);
     }
-    if (actx.state === 'suspended') actx.resume();
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
     return actx;
   }
+
+  // iOS can leave page audio silently dead after switching apps. Drop it when the app is
+  // hidden; the next sound (always after a tap) builds a fresh one.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden' || !actx) return;
+    stopFanfare();
+    try { actx.close(); } catch (_) { /* ignore */ }
+    actx = null;
+    master = null;
+  });
 
   // One note. `hold` sustains then releases (brass, fanfare); otherwise it decays like a bell.
   function note(ac, { f, t = 0, d = 0.15, type = 'square', vol = 0.1, to, hold = false, vib, lowpass, dest = master, track }) {

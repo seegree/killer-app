@@ -309,7 +309,8 @@ kbd {
   color: var(--chalk-dim);
   white-space: nowrap;
 }
-.pill b { color: var(--chalk); font-size: 15px; }
+.pill b { color: var(--chalk); font-family: var(--display); font-weight: 400; font-size: 24px; line-height: 1; vertical-align: -2px; margin-right: 3px; }
+.pill i { font-style: normal; margin: 0 7px; opacity: 0.5; }
 
 .stage { flex: 1; display: flex; flex-direction: column; padding: 0 var(--pad); gap: 14px; }
 .left { display: contents; }
@@ -360,6 +361,33 @@ kbd {
   from { opacity: 0; transform: translateX(34px) scale(0.96); filter: blur(4px); }
   to { opacity: 1; transform: none; filter: none; }
 }
+.now-stamp {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 29%;
+  padding: 0.12em 0.45em 0.02em;
+  border: 0.07em solid currentColor;
+  border-radius: 0.18em;
+  font-family: var(--display);
+  font-size: clamp(50px, 16cqi, 130px);
+  line-height: 1;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  background: rgba(7, 16, 12, 0.55);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) rotate(-8deg);
+  animation: stampOn 0.32s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  pointer-events: none;
+}
+.now-stamp.safe { color: #5ee08f; }
+.now-stamp.miss { color: #ff6b63; }
+.now-stamp.extra { color: var(--gold); }
+@keyframes stampOn { from { opacity: 0; transform: translate(-50%, -50%) rotate(-8deg) scale(1.7); } }
+
+/* The stamp lands on the name (everyone knows who just shot), leaving the mark, lives and Next/Then clear. */
+.now.holding .now-name { opacity: 0.3; transition: opacity 0.15s ease; }
 .now-status { display: flex; align-items: center; justify-content: center; gap: 0.4em; font-size: 40px; }
 .now-status .mk.lg .chalk { width: 1.75em; height: 1.75em; border-radius: 0.34em; }
 .now-status .mk.lg .chip { font-size: 0.55em; line-height: 1; height: 1.7em; min-width: 2.4em; padding: 0.06em 0.55em 0; }
@@ -368,8 +396,8 @@ kbd {
 
 /* Next / Then: labels sit small and raised; names and marks carry the weight */
 .now-next {
-  margin-top: 0.5em;
-  font-size: 24px;
+  margin-top: 0.45em;
+  font-size: 30px;
   min-height: 1.2em;
   display: flex;
   flex-wrap: wrap;
@@ -382,20 +410,25 @@ kbd {
   align-self: flex-start;
   margin-top: 0.12em;
   font-family: var(--ui);
-  font-size: 0.4em;
+  font-size: 0.42em;
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(244, 241, 232, 0.6);
+  color: rgba(244, 241, 232, 0.72);
 }
 .nx-name { font-family: var(--display); line-height: 1; padding-top: 0.08em; letter-spacing: 0.03em; white-space: nowrap; }
 .nx-sep { width: 1px; height: 0.8em; background: rgba(244, 241, 232, 0.25); }
+/* Phones: stack Next and Then so both stay big */
+@media (max-width: 520px) {
+  .now-next { flex-direction: column; gap: 0.1em; }
+  .nx-sep { display: none; }
+}
 .mk.xs { gap: 0.2em; }
 .mk.xs .chalk { width: 0.9em; height: 0.9em; background: none; box-shadow: none; }
 .mk.xs .chip { font-size: 0.5em; line-height: 1; height: 1.6em; min-width: 2.5em; padding: 0.06em 0.5em 0; box-shadow: none; }
 @media (min-width: 960px) {
   .now-status { font-size: 44px; }
-  .now-next { font-size: 28px; }
+  .now-next { font-size: 32px; }
 }
 
 /* Scoreboard */
@@ -470,9 +503,9 @@ kbd {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 40px;
+  min-height: 44px;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: 17px;
   color: var(--chalk-dim);
 }
 .last-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -574,14 +607,14 @@ kbd {
 
 /* ------------------------------------------------------------------ TV mode */
 body.tv .controls { display: none; }
-body.tv .stage { display: flex; flex-direction: column; align-items: stretch; gap: 22px; }
+body.tv .stage { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 body.tv .left { display: block; position: static; }
-body.tv .now-felt { padding: 18px 28px 20px; }
+body.tv .now-felt { padding: 12px 28px 14px; }
 body.tv .now-name { font-size: calc(clamp(72px, 20cqi, 230px) * var(--fit, 1)); }
 body.tv .now-label { font-size: clamp(12px, 1.1vw, 18px); }
 body.tv .now-status { font-size: clamp(48px, 5vw, 100px); }
 body.tv .now-next { font-size: clamp(30px, 3vw, 60px); margin-top: 0.35em; }
-body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(170px, 15vw, 280px), 1fr)); }
+body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 12.5vw, 260px), 1fr)); }
 body.tv .board-grid { gap: 10px; }
 body.tv .pc { min-height: clamp(52px, 4.2vw, 80px); padding-top: 6px; padding-bottom: 6px; }
 body.tv .pc-name { font-size: calc(clamp(24px, 2.1vw, 40px) * var(--nfit, 1)); }
@@ -593,7 +626,7 @@ body.tv .pill b { font-size: 20px; }
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px 22px;
-  padding: 14px var(--pad) calc(var(--safe-b) + 16px);
+  padding: 8px var(--pad) calc(var(--safe-b) + 8px);
   font-size: 13px;
   color: var(--chalk-faint);
 }
@@ -841,18 +874,6 @@ body.win::before { display: none; }
 .sheet-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); }
 .sheet-btn small { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--chalk-dim); }
 .sheet-btn.danger { color: #ff8a8d; }
-.sound-previews { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.chip-btn {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--chalk-dim);
-}
-.chip-btn:hover { color: var(--chalk); background: rgba(255, 255, 255, 0.09); }
 .sheet-note { margin: 12px 2px 0; font-size: 13px; color: var(--chalk-dim); }
 .stepper { display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 10px; }
 .step {
@@ -880,7 +901,7 @@ body.win::before { display: none; }
   place-items: center;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(circle, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.35) 70%);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.7) 70%);
 }
 #flash.show { animation: flash 1.8s ease both; }
 @keyframes flash { 0% { opacity: 0; } 8% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }

@@ -11,7 +11,7 @@ There's no build step and no dependencies. The game auto-saves in the browser, s
 
 ## How it works
 - **Setup:** add names (paste a whole list if you like; a name that's already on the list is flagged so you can add a last initial), press 🎲 **Shuffle**, drag ☰ to adjust the order, then **Rack 'em**.
-- **Each shot:** **Miss** takes a life and passes the turn. **Made** is safe and passes the turn. **+1 Extra life** gives a life per extra ball and keeps the turn, so tap it once or twice, then **Made**.
+- **Each shot:** **Miss** takes a life and passes the turn. **Made** is safe and passes the turn. **+1 Extra life** is a made shot that sank 2 balls: it adds a life and passes the turn. For 3 or 4 balls, tap it again quickly while the board still shows the shooter (up to 3 taps).
 - **Marks:** 1 lost is `/`, 2 lost is `X`, and 3 lost is a circled X meaning OUT. Lives above 3 show as gold `+N` chips.
 - **Fix mistakes:** use **Undo** (it goes back any number of steps), or tap any player to set their lives, make them the shooter, or remove them.
 - **Menu:** add a late player, TV mode (laptops and desktops only), rematch, or start a new game.
