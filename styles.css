@@ -1397,3 +1397,22 @@ body.watch .topbar .icon-btn[data-do="leaveWatch"] { width: 40px; height: 40px; 
 /* No strikes yet: just the words, no empty box */
 .ut-lives .mk:not(.bonus):has(.chalk g:empty) { display: none; }
 
+/* The shot clock on the you're-up screen */
+.ut-clock {
+  margin-top: 1vh;
+  font-family: var(--display);
+  font-size: min(46cqi, 28vh);
+  line-height: 0.9;
+  padding-top: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk);
+}
+.ut-clock.idle { font-size: min(8cqi, 5vh); color: var(--chalk-dim); letter-spacing: 0.06em; }
+.ut-clock.paused { font-size: min(14cqi, 10vh); color: var(--gold); }
+.ut-clock.warn, .ut-clock.time { color: #ff5a52; text-shadow: 0 0 40px rgba(229, 72, 77, 0.6); animation: clockPulse 1s ease-in-out infinite; }
+.ut-bar { width: min(80cqi, 520px); height: 14px; border-radius: 999px; overflow: hidden; background: rgba(0, 0, 0, 0.35); }
+.ut-bar i { display: block; height: 100%; background: var(--chalk); transform-origin: left center; transition: transform 0.1s linear; }
+.ut-bar.warn i { background: var(--red); }
+.up-takeover.urgent::before { box-shadow: inset 0 0 0 5px var(--red), inset 0 0 60px rgba(229, 72, 77, 0.35); animation-duration: 0.5s; }
+.deck-banner.still, .up-takeover.still { animation: none; }
+

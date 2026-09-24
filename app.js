@@ -53,6 +53,7 @@
   })();
   const alerted = { deck: null, up: null }; // turn keys already alerted, so each fires once
   const dismissed = { deck: null, up: null };
+  const shown = { deck: null, up: null }; // animate the banner/takeover only when they first appear
   let share = WATCH ? null : (() => {
     try {
       const v = JSON.parse(localStorage.getItem(SHARE_KEY));
@@ -380,6 +381,19 @@
     if (bar) {
       bar.style.transform = `scaleX(${v.scale})`;
       bar.parentElement.classList.toggle('warn', v.barWarn);
+    }
+    // The you're-up screen on a viewer's phone shows the same countdown.
+    const upNum = document.getElementById('upClockNum');
+    if (upNum) {
+      upNum.textContent = v.text;
+      const upChip = document.getElementById('upClock');
+      upChip.classList.toggle('warn', v.warn);
+      upChip.classList.toggle('time', v.time);
+      upChip.classList.toggle('paused', v.paused);
+      const upBar = document.getElementById('upClockBar');
+      upBar.style.transform = `scaleX(${v.scale})`;
+      upBar.parentElement.classList.toggle('warn', v.warn || v.time);
+      upChip.closest('.up-takeover').classList.toggle('urgent', v.warn || v.time);
     }
     // Final seconds: a huge red countdown over the lives row, and the chalkboard frame pulses.
     const finalEl = document.getElementById('clockFinal');
@@ -1046,23 +1060,39 @@
     const n = turnsUntil(p);
     const key = turnKey();
     if (n === 1 && dismissed.deck !== key) {
+      const fresh = shown.deck !== key;
+      shown.deck = key;
       return `
-        <div class="deck-banner" role="alert">
+        <div class="deck-banner${fresh ? '' : ' still'}" role="alert">
           <span>🎱 <b>${esc(p.name)}</b>, you’re on deck. Head to the table!</span>
           <button data-do="dismissDeck" aria-label="Dismiss">✕</button>
         </div>`;
     }
     if (n === 0 && dismissed.up !== key && !fb) {
       const breaking = !S.log.length || [...S.log].reverse().find((e) => e.a !== 'extra').a === 'rack';
+      const fresh = shown.up !== key;
+      shown.up = key;
       return `
-        <button class="up-takeover" data-do="dismissUp" role="alert">
+        <button class="up-takeover${fresh ? '' : ' still'}" data-do="dismissUp" role="alert">
           <span class="ut-name" style="--fit:${fit(p.name)}">${esc(p.name)}</span>
           <span class="ut-up">${breaking ? 'You’re breaking!' : 'You’re up!'}</span>
           <span class="ut-lives">${marks(p, 'lg')}<span>${p.lives === 1 ? 'Last life' : `${p.lives} lives left`}</span></span>
+          ${upClock(breaking)}
           <span class="ut-hint">Tap to see the board</span>
         </button>`;
     }
     return '';
+  }
+
+  // The shot clock on the you're-up screen: a big countdown and a draining bar.
+  function upClock(breaking) {
+    if (!clockOn()) return '';
+    if (breaking) return '<span class="ut-clock idle">Break · no clock</span>';
+    const running = clk && clk.id === (mePlayer() || {}).id;
+    const v = running ? clockView() : { text: clockPrefs.secs, scale: 1, warn: false, time: false, paused: false };
+    return `
+      <span class="ut-clock${v.warn ? ' warn' : ''}${v.time ? ' time' : ''}${v.paused ? ' paused' : ''}" id="upClock"><span id="upClockNum">${v.text}</span></span>
+      <span class="ut-bar${v.warn || v.time ? ' warn' : ''}"><i id="upClockBar" style="transform:scaleX(${v.scale})"></i></span>`;
   }
 
   // Watchers: connecting, between games, or a code that isn't live.
