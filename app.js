@@ -24,6 +24,21 @@
   const tvOn = () => !!S.tv && S.phase === 'playing' && canTV();
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
+  // ---------------------------------------------------------------- live sharing (setup)
+
+  // ?watch=CODE opens a read-only live view of someone else's game. It never touches this
+  // browser's own saved game.
+  const WATCH = (new URLSearchParams(location.search).get('watch') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || null;
+  const SHARE_KEY = 'killer.share.v1';
+  let share = WATCH ? null : (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(SHARE_KEY));
+      return v && v.code ? v : null;
+    } catch (_) { return null; }
+  })(); // { code } while this phone is sharing its game
+  let shareStatus = 'connecting'; // connecting | live | offline
+  const remote = { status: 'connecting' }; // watch mode: connecting | live | missing | unreachable
+
   // ---------------------------------------------------------------- state
 
   let history = [];
@@ -64,6 +79,7 @@
   }
 
   function load() {
+    if (WATCH) return null;
     try {
       const data = JSON.parse(localStorage.getItem(GAME_KEY));
       if (data && data.state && data.state.phase) {
@@ -75,7 +91,9 @@
   }
 
   function save() {
+    if (WATCH) return;
     try { localStorage.setItem(GAME_KEY, JSON.stringify({ state: S, history })); } catch (_) { /* storage unavailable */ }
+    queuePublish();
   }
 
   function loadRoster() {
@@ -217,7 +235,7 @@
 
   // ---------------------------------------------------------------- shot clock
 
-  const clockOn = () => clockPrefs.on && S.phase === 'playing';
+  const clockOn = () => !WATCH && clockPrefs.on && S.phase === 'playing';
 
   function setClockPrefs(changes) {
     clockPrefs = { ...clockPrefs, ...changes };
@@ -653,6 +671,12 @@
   // ---------------------------------------------------------------- screens
 
   function render() {
+    document.body.classList.toggle('watch', !!WATCH);
+    if (WATCH && (remote.status !== 'live' || S.phase === 'setup')) {
+      document.body.classList.remove('tv', 'win');
+      renderWatchStatus();
+      return;
+    }
     document.body.classList.toggle('tv', tvOn());
     document.body.classList.toggle('win', S.phase === 'finished');
     const justWon = S.phase === 'finished' && lastPhase === 'playing';
@@ -809,7 +833,9 @@
           <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out</div>
           ${tvOn()
             ? '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
-            : '<button class="icon-btn" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>'}
+            : WATCH
+              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}`
+              : `<button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>`}
         </header>
 
         <div class="stage">
@@ -824,7 +850,7 @@
               </div>
             </section>
 
-            <section class="controls">
+            ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div></section>` : `            <section class="controls">
               <div class="lastline">
                 <span class="last-text">${lastText()}</span>
                 <button class="undo" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
@@ -841,7 +867,7 @@
                   ${S.turnBonus ? `<span class="badge">+${S.turnBonus}</span>` : ''}
                 </button>
               </div>
-            </section>
+            </section>`}
           </div>
 
           <section class="board" aria-label="Scoreboard">
@@ -849,7 +875,7 @@
           </section>
         </div>
 
-        ${tvOn() ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>${clockOn() ? '<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>' : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -872,14 +898,31 @@
                 <li><b>${w.lives}</b><span>lives left</span></li>
               </ul>` : ''}
             ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
-            <div class="win-actions">
+            ${WATCH ? '<div class="win-actions watching"><button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button></div>' : `<div class="win-actions">
               <button class="btn btn-start" data-do="rematch">Rematch</button>
               <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
               <button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button>
               <button class="btn btn-ghost" data-do="newgame">New game</button>
-            </div>
+            </div>`}
           </div>
         </div>
+      </section>`;
+  }
+
+  // Watchers: connecting, between games, or a code that isn't live.
+  function renderWatchStatus() {
+    const msg = {
+      connecting: `Connecting to game <b>${esc(WATCH)}</b>…`,
+      live: 'The next game is being set up. Hang tight.',
+      missing: `Game <b>${esc(WATCH)}</b> isn't live right now. Check the code with your scorekeeper.`,
+      unreachable: 'Can’t reach the live game. Check your internet connection.',
+    }[remote.status];
+    app.innerHTML = `
+      <section class="watch-status">
+        <h1 class="wordmark"><img src="wordmark.svg" alt="Killer"></h1>
+        <p class="ws-msg">${msg}</p>
+        ${remote.status === 'connecting' ? '<div class="ws-spinner" aria-hidden="true"></div>' : ''}
+        <p class="ws-note">Live view · you can’t change anything</p>
       </section>`;
   }
 
@@ -1084,9 +1127,39 @@
   }
 
   const onOff = (on) => `<span class="state ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>`;
+  const shareLink = () => share && `${location.origin}${location.pathname}?watch=${share.code}`;
 
   function renderSheet() {
     if (!sheetMode) return closeSheet();
+
+    if (sheetMode.type === 'share') {
+      const status = {
+        connecting: '<span class="dot"></span> Connecting…',
+        live: '<span class="dot"></span> Live: viewers see every tap',
+        offline: '<span class="dot"></span> Offline: scoring still works, viewers will catch up',
+      }[shareStatus];
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Share live</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          ${share ? `
+            <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
+            <p class="share-status ${shareStatus}">${status}</p>
+            <div class="share-link">
+              <input type="text" readonly value="${esc(shareLink())}" aria-label="Watch link">
+              <button class="btn btn-brass" data-sheet="copyLink">Copy</button>
+            </div>
+            ${navigator.share ? '<button class="sheet-btn primary" data-sheet="sendLink">📤 Send the link…</button>' : ''}
+            <p class="sheet-note">Anyone with the link can watch on their phone, or on a TV. They can’t change anything.</p>
+            <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The link stops working</small></button>`
+          : `
+            <p class="sheet-note">Show this game live on everyone’s phones, or on a TV. Viewers get a link and can’t change anything.</p>
+            <button class="sheet-btn primary" data-sheet="startShare">📡 Start sharing</button>`}
+        </div>`;
+      return;
+    }
 
     if (sheetMode.type === 'clock') {
       sheet.innerHTML = `
@@ -1144,6 +1217,7 @@
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
+          <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
           <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
@@ -1174,6 +1248,11 @@
       case 'sound': setSound(!soundOn); renderSheet(); sfx.extra(); break;
       case 'rerack': closeSheet(); rerack(); break;
       case 'clockPanel': openSheet({ type: 'clock' }); break;
+      case 'share': openSheet({ type: 'share' }); break;
+      case 'startShare': startSharing(); break;
+      case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
+      case 'copyLink': copyLink(); break;
+      case 'sendLink': navigator.share({ title: 'Killer: live game', url: shareLink() }).catch(() => {}); break;
       case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); clk = null; closeSheet(); render(); break;
@@ -1185,7 +1264,7 @@
   // ---------------------------------------------------------------- sound
   // Retro arcade effects synthesized with Web Audio — no audio files.
   const SOUND_KEY = 'killer.sound.v1';
-  let soundOn = (() => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; } })();
+  let soundOn = WATCH ? false : (() => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; } })();
   let actx = null;
   let master = null;
 
@@ -1502,9 +1581,12 @@
 
   // ---------------------------------------------------------------- events
 
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare'];
+
   app.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t || t.disabled) return;
+    if (WATCH && !WATCH_ALLOWED.includes(t.dataset.do)) return;
 
     if (t.dataset.act) {
       t.blur();
@@ -1629,6 +1711,11 @@
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
+    if (WATCH) {
+      if (S.phase === 'playing' && canTV() && (k === 't' || (k === 'escape' && S.tv))) { e.preventDefault(); toggleTV(); }
+      return;
+    }
+
     if (S.phase === 'playing') {
       if (k === 'x' || k === 'arrowleft') actMiss();
       else if (k === ' ' || k === 'arrowright' || k === 'enter') actMade();
@@ -1641,6 +1728,144 @@
       e.preventDefault();
     }
   });
+
+  // ---------------------------------------------------------------- live sharing
+
+  const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L mix-ups
+  const newCode = () => Array.from({ length: 5 }, () => CODE_CHARS[randInt(CODE_CHARS.length)]).join('');
+
+  function saveShare() {
+    try {
+      if (share) localStorage.setItem(SHARE_KEY, JSON.stringify(share));
+      else localStorage.removeItem(SHARE_KEY);
+    } catch (_) { /* ignore */ }
+  }
+
+  function setShareStatus(status) {
+    if (status === shareStatus) return;
+    shareStatus = status;
+    if (sheet.open && sheetMode && sheetMode.type === 'share') renderSheet();
+  }
+
+  // Watchers see the game, not this device's view settings or the setup list.
+  function publicState() {
+    const { tv, roster, ...rest } = S;
+    return rest;
+  }
+
+  // Bundle rapid taps into one update.
+  let publishTimer = 0;
+  function queuePublish() {
+    if (!share) return;
+    clearTimeout(publishTimer);
+    publishTimer = setTimeout(publishNow, 150);
+  }
+
+  async function publishNow() {
+    const live = window.killerLive;
+    if (!share || !live) return;
+    const code = share.code;
+    try {
+      await live.publish(code, publicState());
+      setShareStatus('live');
+    } catch (err) {
+      if (String(err && (err.code || err.message)).toUpperCase().includes('PERMISSION')) {
+        // The code belongs to another game (or this phone's ID changed): switch to a fresh code.
+        share = { code: newCode() };
+        saveShare();
+        toast('Sharing moved to a new code');
+        if (sheet.open) renderSheet();
+        return publishNow();
+      }
+      setShareStatus('offline');
+    }
+  }
+
+  function startSharing() {
+    share = { code: newCode() };
+    shareStatus = 'connecting';
+    saveShare();
+    renderSheet();
+    render();
+    if (!window.killerLive) setShareStatus('offline');
+    publishNow();
+  }
+
+  function stopSharing() {
+    const live = window.killerLive;
+    if (share && live) live.stop(share.code).catch(() => {});
+    share = null;
+    saveShare();
+    closeSheet();
+    render();
+    toast('Stopped sharing');
+  }
+
+  function copyLink() {
+    const link = shareLink();
+    const done = () => toast('Link copied');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, () => selectLink());
+    else selectLink();
+  }
+
+  function selectLink() {
+    const input = sheet.querySelector('.share-link input');
+    if (input) { input.focus(); input.select(); }
+  }
+
+  // Watchers: show the same result stamps the scorekeeper sees, worked out from the new shots.
+  function stampFromRemote(added) {
+    if (S.phase !== 'playing' || !added.length) return;
+    const lastShot = [...added].reverse().find((e) => e.a !== 'rack');
+    if (!lastShot) return;
+    const p = byId(lastShot.p);
+    if (!p) return;
+    const knockedOut = added.find((e) => e.a === 'miss' && e.l <= 0);
+    if (knockedOut) {
+      const out = byId(knockedOut.p);
+      showResult(knockedOut.p, 'out', 1900);
+      if (out) flashOut(out.name);
+    } else if (lastShot.a === 'miss') {
+      showResult(p.id, 'miss', 950);
+    } else if (lastShot.a === 'extra' && lastShot.late) {
+      showResult(p.id, 'extra', 1500, (S.last && S.last.bonus) || 1);
+    } else if (lastShot.a === 'made') {
+      const extras = added.filter((e) => e.a === 'extra' && !e.late && e.p === p.id).length;
+      if (extras) showResult(p.id, 'extra', 1500, extras);
+      else showResult(p.id, 'safe', 750);
+    }
+  }
+
+  function applyRemote(state) {
+    const wasLive = remote.status === 'live';
+    const prevLog = S.log || [];
+    S = { ...freshState(), ...state, tv: S.tv };
+    remote.status = 'live';
+    if (!Array.isArray(S.log)) S.log = [];
+    if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
+    else if (wasLive) stampFromRemote(S.log.slice(prevLog.length));
+    render();
+  }
+
+  function startWatching() {
+    window.killerLive.watch(WATCH, applyRemote, () => {
+      remote.status = 'missing';
+      render();
+    });
+  }
+
+  function onLiveReady() {
+    if (WATCH) startWatching();
+    else if (share) publishNow();
+  }
+  if (window.killerLive) onLiveReady();
+  else window.addEventListener('killer:live-ready', onLiveReady, { once: true });
+  // If Firebase can't be loaded at all (offline, blocked), say so instead of spinning forever.
+  setTimeout(() => {
+    if (window.killerLive) return;
+    if (WATCH && remote.status === 'connecting') { remote.status = 'unreachable'; render(); }
+    if (share) setShareStatus('offline');
+  }, 10000);
 
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && S.tv && S.phase === 'playing') { S.tv = false; save(); render(); }
