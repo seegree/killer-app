@@ -42,6 +42,17 @@
   let remoteSound = { on: false, target: 'phone' }; // TV display: the operator's sound settings
   let tvSoundEnabled = false; // TV display: someone clicked to allow sound
   let tvSetupOpen = false;
+
+  // Viewers can pick which player they are to get their own turn alerts. Remembered by
+  // name (so it carries across rematches) and per game code.
+  const ME_KEY = 'killer.me.v1';
+  let me = (() => {
+    const base = { name: '', codes: {}, sound: true };
+    if (!WATCH || WATCH_TV) return base;
+    try { return { ...base, ...JSON.parse(localStorage.getItem(ME_KEY)) }; } catch (_) { return base; }
+  })();
+  const alerted = { deck: null, up: null }; // turn keys already alerted, so each fires once
+  const dismissed = { deck: null, up: null };
   let share = WATCH ? null : (() => {
     try {
       const v = JSON.parse(localStorage.getItem(SHARE_KEY));
@@ -241,6 +252,60 @@
     return { fresh, dupes };
   }
 
+  // ---------------------------------------------------------------- following yourself (viewers)
+
+  const following = () => !!(WATCH && !WATCH_TV && me.codes[WATCH]);
+  const mePlayer = () => (following() ? S.players.find((p) => nameKey(p.name) === nameKey(me.codes[WATCH])) : null);
+
+  function saveMe() {
+    try { localStorage.setItem(ME_KEY, JSON.stringify(me)); } catch (_) { /* ignore */ }
+  }
+
+  // Turns until this player shoots: 0 = up now, 1 = on deck, null = out or not playing.
+  function turnsUntil(p) {
+    if (!p || !isAlive(p) || S.phase !== 'playing') return null;
+    let i = S.current;
+    for (let k = 0; k <= S.players.length; k++) {
+      if (S.players[i] && S.players[i].id === p.id) return k;
+      i = nextAliveIndex(i);
+      if (i < 0) return null;
+    }
+    return null;
+  }
+
+  // Identifies the current turn, so each alert fires once per turn.
+  const turnKey = () => `${S.log.filter((e) => e.a === 'miss' || e.a === 'made').length}:${S.current}`;
+
+  function choosePlayer(name) {
+    me.codes[WATCH] = name;
+    if (name) me.name = name;
+    saveMe();
+    alerted.deck = alerted.up = null;
+    dismissed.deck = dismissed.up = null;
+    closeSheet();
+    unlockAudio();
+    render();
+    checkMyTurn();
+  }
+
+  // Fire the on-deck / you're-up alerts when this player's turn is coming.
+  function checkMyTurn() {
+    const p = mePlayer();
+    const n = turnsUntil(p);
+    const key = turnKey();
+    if (n === 1 && alerted.deck !== key) {
+      alerted.deck = key;
+      buzz([120]);
+      sfx.deck();
+    }
+    if (n === 0 && alerted.up !== key) {
+      alerted.up = key;
+      buzz([200, 100, 200, 100, 400]);
+      sfx.up();
+    }
+  }
+
+  const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
   const livesLabel = (n) => (n <= 0 ? 'out' : n === 1 ? 'last life' : `${n} lives left`);
 
   // ---------------------------------------------------------------- shot actions
@@ -723,6 +788,7 @@
     else if (view === 'recap') renderRecap();
     else renderWinner();
 
+    if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
     if (tvNeedsSoundClick()) app.insertAdjacentHTML('beforeend', '<button class="sound-banner" data-do="enableSound">🔊 Click to turn on sound for the room</button>');
     if (S.phase !== 'playing') flash.classList.remove('show');
     if (justWon) confetti();
@@ -812,6 +878,7 @@
     prevCurrentId = p.id;
 
     // The list is the line: the shooter first, then everyone in turn order; players who are out go last.
+    const meP = mePlayer();
     const outRank = (x) => S.outOrder.indexOf(x.id);
     const line = [];
     const gone = [];
@@ -853,7 +920,9 @@
       const isCur = x.id === p.id;
       const isNext = x.id === nextId;
       const out = !isAlive(x);
-      return `<button class="pc${isCur ? ' cur' : ''}${isNext ? ' nxt' : ''}${out ? ' out' : ''}" data-player="${x.id}" aria-label="${esc(x.name)}, ${out ? 'out' : livesLabel(x.lives)}">
+      const isMe = meP && x.id === meP.id;
+      return `<button class="pc${isCur ? ' cur' : ''}${isNext ? ' nxt' : ''}${out ? ' out' : ''}${isMe ? ' me' : ''}" data-player="${x.id}" aria-label="${esc(x.name)}, ${out ? 'out' : livesLabel(x.lives)}">
+          ${isMe ? '<span class="tag tag-me">You</span>' : ''}
           <span class="pc-name" style="--nfit:${cardFit(x.name)}">${esc(x.name)}</span>
           ${marks(x)}
           ${isCur ? '<span class="tag">Up</span>' : isNext ? '<span class="tag tag-next">Next</span>' : ''}
@@ -893,7 +962,7 @@
               </div>
             </section>
 
-            ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div></section>` : `            <section class="controls">
+            ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div>${WATCH_TV ? '' : youStrip(meP)}</section>` : `            <section class="controls">
               <div class="lastline">
                 <span class="last-text">${lastText()}</span>
                 <button class="undo" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
@@ -951,6 +1020,49 @@
           </div>
         </div>
       </section>`;
+  }
+
+  // Viewer's own status along the bottom: lives and how many turns until they shoot.
+  function youStrip(p) {
+    if (!following()) {
+      return '<button class="you-strip pick" data-do="whoami">👤 Pick your name to get turn alerts</button>';
+    }
+    if (!p) return `<button class="you-strip pick" data-do="whoami">👤 ${esc(me.codes[WATCH])} isn’t in this game · change</button>`;
+    const n = turnsUntil(p);
+    const place = S.outOrder.length - S.outOrder.indexOf(p.id) + aliveCount();
+    const state = n === null ? 'out' : n === 0 ? 'up' : n === 1 ? 'deck' : '';
+    const turn = n === null ? `Out · ${ordinal(place)}` : n === 0 ? 'You’re up!' : n === 1 ? 'On deck' : `Up in <b>${n}</b>`;
+    return `
+      <button class="you-strip ${state}" data-do="whoami" aria-label="You are ${esc(p.name)}. Tap to change.">
+        <span class="ys-name">${esc(p.name)}</span>
+        <span class="ys-lives">${marks(p, 'xs')}${p.lives <= 0 ? '' : p.lives === 1 ? 'Last life' : `${p.lives} lives`}</span>
+        <span class="ys-turn">${turn}</span>
+      </button>`;
+  }
+
+  // On deck: a dismissible banner. Your turn: a full-screen takeover (tap to see the board).
+  function turnAlerts() {
+    const p = mePlayer();
+    const n = turnsUntil(p);
+    const key = turnKey();
+    if (n === 1 && dismissed.deck !== key) {
+      return `
+        <div class="deck-banner" role="alert">
+          <span>🎱 <b>${esc(p.name)}</b>, you’re on deck. Head to the table!</span>
+          <button data-do="dismissDeck" aria-label="Dismiss">✕</button>
+        </div>`;
+    }
+    if (n === 0 && dismissed.up !== key && !fb) {
+      const breaking = !S.log.length || [...S.log].reverse().find((e) => e.a !== 'extra').a === 'rack';
+      return `
+        <button class="up-takeover" data-do="dismissUp" role="alert">
+          <span class="ut-name" style="--fit:${fit(p.name)}">${esc(p.name)}</span>
+          <span class="ut-up">${breaking ? 'You’re breaking!' : 'You’re up!'}</span>
+          <span class="ut-lives">${marks(p, 'lg')}<span>${p.lives === 1 ? 'Last life' : `${p.lives} lives left`}</span></span>
+          <span class="ut-hint">Tap to see the board</span>
+        </button>`;
+    }
+    return '';
   }
 
   // Watchers: connecting, between games, or a code that isn't live.
@@ -1121,7 +1233,6 @@
 
     // Finishing order: winner, then last out to first out.
     const order = [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean);
-    const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
     const rows = order.map((p, i) => {
       const st = stats.get(p.id);
       return `<tr class="${i === 0 ? 'is-winner' : ''}">
@@ -1210,6 +1321,29 @@
 
   function renderSheet() {
     if (!sheetMode) return closeSheet();
+
+    if (sheetMode.type === 'who') {
+      const q = (sheetMode.q || '').trim();
+      const names = S.players.map((p) => p.name).sort((a, b) => a.localeCompare(b));
+      const shown = q ? names.filter((n) => nameKey(n).includes(nameKey(q))) : names;
+      const suggest = !me.codes[WATCH] && me.name && names.find((n) => nameKey(n) === nameKey(me.name));
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Who are you?</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">Get a heads-up when you’re on deck, and a big alert when it’s your turn.</p>
+          ${suggest ? `<button class="sheet-btn primary" data-sheet="pickMe" data-name="${esc(suggest)}">I’m ${esc(suggest)}</button>` : ''}
+          <input type="search" class="who-search" data-who-search placeholder="Search names" value="${esc(q)}" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search names">
+          <div class="who-grid">
+            ${shown.map((n) => `<button class="who-name${me.codes[WATCH] && nameKey(n) === nameKey(me.codes[WATCH]) ? ' on' : ''}" data-sheet="pickMe" data-name="${esc(n)}">${esc(n)}</button>`).join('') || '<p class="sheet-note">No matching names.</p>'}
+          </div>
+          <button class="sheet-btn" data-sheet="toggleAlertSound">${me.sound ? '🔔 Alert sound' : '🔕 Alert sound'} ${onOff(me.sound)}<small>A ping when you’re on deck and when it’s your turn (only on this phone)</small></button>
+          <button class="link-btn" data-sheet="pickMe" data-name="">I’m just watching</button>
+        </div>`;
+      return;
+    }
 
     if (sheetMode.type === 'watch') {
       sheet.innerHTML = `
@@ -1348,7 +1482,15 @@
   }
 
   sheet.addEventListener('close', () => { sheetMode = null; unlockPage(); });
-  sheet.addEventListener('cancel', unlockPage); // Esc closes the panel; unlock right away
+  sheet.addEventListener('cancel', unlockPage);
+  sheet.addEventListener('input', (e) => {
+    if (!e.target.matches('[data-who-search]') || !sheetMode) return;
+    sheetMode.q = e.target.value;
+    const pos = e.target.selectionStart;
+    renderSheet();
+    const box = sheet.querySelector('[data-who-search]');
+    if (box) { box.focus(); box.setSelectionRange(pos, pos); }
+  }); // Esc closes the panel; unlock right away
 
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet) return closeSheet(); // backdrop
@@ -1370,6 +1512,8 @@
       case 'startShare': startSharing(); break;
       case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
       case 'copyLink': copyLink(shareLink()); break;
+      case 'pickMe': choosePlayer(b.dataset.name || ''); break;
+      case 'toggleAlertSound': me.sound = !me.sound; saveMe(); renderSheet(); if (me.sound) { unlockAudio(); sfx.deck(); } break;
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
@@ -1411,8 +1555,11 @@
     && !(tvSoundEnabled && actx && actx.state === 'running');
 
   // Browsers only allow audio after a tap, which every sound here follows.
-  function audio() {
-    if (!soundHere()) return null;
+  // Personal turn alerts on a viewer's own phone (on by default, can be switched off).
+  const personalSound = () => following() && me.sound;
+
+  function audio(personal = false) {
+    if (!(personal ? personalSound() : soundHere())) return null;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     if (actx && (actx.state === 'closed' || actx.state === 'interrupted')) {
@@ -1435,8 +1582,8 @@
   // not a touch-down. Wake it on those, with a silent blip that fully unlocks it. This also
   // readies the audio for sounds fired by a timer (shot clock ticks and buzzer).
   function unlockAudio() {
-    if (!soundHere()) return;
-    const ac = audio();
+    if (!soundHere() && !personalSound()) return;
+    const ac = audio(soundHere() ? false : true);
     if (!ac || ac.unlocked) return;
     try {
       const blip = ac.createBufferSource();
@@ -1576,6 +1723,19 @@
       if (!ac) return;
       note(ac, { f: 330, to: 82, d: 0.85, type: 'square', vol: 0.12, hold: true, lowpass: 900 });
       note(ac, { f: 165, to: 41, d: 0.85, type: 'triangle', vol: 0.14, hold: true });
+    },
+    // Viewer's own phone: you're on deck (next). A friendly two-note ding.
+    deck() {
+      const ac = audio(true);
+      if (!ac) return;
+      note(ac, { f: 1175, d: 0.16, type: 'triangle', vol: 0.18 });
+      note(ac, { f: 1568, t: 0.16, d: 0.4, type: 'triangle', vol: 0.18 });
+    },
+    // Viewer's own phone: you're up. A bright rising call, repeated once.
+    up() {
+      const ac = audio(true);
+      if (!ac) return;
+      [0, 0.7].forEach((t0) => [1047, 1319, 1568, 2093].forEach((f, i) => note(ac, { f, t: t0 + i * 0.09, d: 0.12, type: 'square', vol: 0.12, hold: true, lowpass: 5000 })));
     },
     // Shot clock countdown: soft ticks, with a brighter pip on the final second.
     tick(final) {
@@ -1718,7 +1878,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp'];
 
   app.addEventListener('click', (e) => {
     const t = e.target.closest('button');
@@ -1754,6 +1914,9 @@
       case 'muteFanfare': sfx.stop(); t.remove(); break;
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       case 'watchEntry': openSheet({ type: 'watch' }); break;
+      case 'whoami': openSheet({ type: 'who' }); break;
+      case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
+      case 'dismissUp': dismissed.up = turnKey(); render(); break;
       case 'leaveWatch': location.href = location.pathname; break;
       // Tapping the clock resumes it when paused; otherwise it opens the clock panel.
       case 'clock':
@@ -2030,6 +2193,9 @@
     if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
     else if (wasLive) stampFromRemote(S.log.slice(prevLog.length));
     render();
+    // First time in this game: ask which player they are (skipped on the TV display).
+    if (!WATCH_TV && !(WATCH in me.codes) && S.players.length && !sheet.open) openSheet({ type: 'who' });
+    checkMyTurn();
   }
 
   function startWatching() {
