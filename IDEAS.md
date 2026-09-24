@@ -14,6 +14,16 @@ An optional timer to keep the game moving.
 - Starts automatically when the next name appears on the chalkboard.
 - Bonus: log each re-rack pause to feed a new Recap award, **"Dems da Breaks"**, for the player who broke the most racks (minimum 2).
 
+## Live watch page 🚧 (in progress on the `live-share` branch)
+*Planned September 2026.*
+
+A read-only live copy of the current game that anyone can open, on their own phone or on the TV.
+- **Scorekeeper:** a **📡 Share live** menu item creates a short random game code and shows a QR code and link (`…/killer-app/?watch=CODE`). It's opt-in: nothing changes unless someone shares, and scoring keeps working if the relay is unreachable.
+- **Viewers:** a read-only board with the chalkboard (now shooting / next / then), the list in turn order, "left · out", the last action and the shot clock. No controls. At the end they see the winner and the Recap awards.
+- **TV:** open the watch link on the laptop in TV mode. It's a pure display, and the scorekeeper runs the game from their phone, so no keyboard is needed.
+- **Relay:** Firebase Realtime Database (free tier, up to 100 viewers at once). The app stays on GitHub Pages; only game updates go through Firebase. Only the phone that started sharing can write to a game; old games are cleaned up.
+- **Stages:** (1) relay setup, sending updates, a bare watch page; (2) full watch board and TV display; (3) QR code and Share screen; (4) optional "follow me" alerts when you're next (a sound and screen flash; vibration on Android only).
+
 ## Buzz players' phones when it's their turn (parked)
 *Requested at the first live game.*
 
