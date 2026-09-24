@@ -25,6 +25,8 @@
   // so a phone or tablet turned sideways works as well as a laptop.
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
+  // Bumped on every release (see bump-version.sh); must match version.json and index.html.
+  const APP_VERSION = '2026.09.24.3';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -893,7 +895,7 @@
           </section>
         </div>
 
-        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -2026,6 +2028,40 @@
     if (WATCH && remote.status === 'connecting') { remote.status = 'unreachable'; render(); }
     if (share) setShareStatus('offline');
   }, 10000);
+
+  // ---------------------------------------------------------------- updates
+
+  // Home Screen apps can keep running an old copy for a long time. Ask the site for the
+  // latest version (skipping the cache) and reload onto it when it's safe to. The saved
+  // game lives in browser storage, so it's unaffected.
+  let pendingVersion = null;
+
+  async function checkForUpdate() {
+    try {
+      const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const { version } = await res.json();
+      if (!version || version === APP_VERSION) return;
+      // Don't loop if a reload already tried this version and the site still served an old copy.
+      try { if (sessionStorage.getItem('killer.updateTried') === version) return; } catch (_) { /* ignore */ }
+      pendingVersion = version;
+      applyUpdateWhenIdle();
+    } catch (_) { /* offline: try again later */ }
+  }
+
+  function applyUpdateWhenIdle() {
+    if (!pendingVersion) return;
+    const busy = fb || fanfare || sheet.open || dragId || shuffling;
+    if (busy) { setTimeout(applyUpdateWhenIdle, 3000); return; }
+    try { sessionStorage.setItem('killer.updateTried', pendingVersion); } catch (_) { /* ignore */ }
+    const url = new URL(location.href);
+    url.searchParams.set('v', pendingVersion); // a new address, so the page and its files are fetched fresh
+    location.replace(url.toString());
+  }
+
+  setTimeout(checkForUpdate, 2000);
+  setInterval(checkForUpdate, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 
   window.matchMedia('(orientation: landscape)').addEventListener('change', () => render());
 

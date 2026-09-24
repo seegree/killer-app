@@ -27,4 +27,8 @@ All artwork is flat SVG, with text converted to outlines.
 
 The design session's alternates are in `logo-alternatives/`, which is kept locally and not published.
 
-Commit and push to update the live site.
+## Releasing
+1. Run `./bump-version.sh`. It sets a new version in `version.json`, `app.js` and the file links in `index.html`.
+2. Commit and push. GitHub Pages rebuilds in about a minute.
+
+Open copies of the app (including Home Screen apps) check `version.json` when opened, when brought back to the front, and every 10 minutes. They reload onto the new version as soon as they're not mid-animation or showing a panel. Saved games are unaffected.
