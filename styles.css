@@ -1020,3 +1020,218 @@ body.win::before { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition: none !important; }
 }
+
+/* ------------------------------------------------------------------ live sharing */
+.icon-btn.is-live { position: relative; }
+.icon-btn.is-live::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 2px var(--bg-0);
+  animation: livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse { 50% { opacity: 0.35; } }
+.live-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(229, 72, 77, 0.16);
+  border: 1px solid rgba(229, 72, 77, 0.45);
+  color: #ff8a8d;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+body.watch .pc { cursor: default; }
+body.watch .pc:active { transform: none; }
+.controls.watching .lastline { margin-bottom: 0; }
+.win-actions.watching { grid-template-columns: 1fr; width: min(280px, 100%); margin: 18px auto 0; }
+
+/* Watchers: waiting / not-found screen */
+.watch-status {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: calc(var(--safe-t) + 24px) var(--pad) calc(var(--safe-b) + 24px);
+  text-align: center;
+}
+.watch-status .wordmark img { width: min(80vw, 420px); }
+.ws-msg { max-width: 30em; margin: 0; font-size: 18px; color: var(--chalk); line-height: 1.4; }
+.ws-msg b { color: var(--gold); letter-spacing: 0.08em; }
+.ws-note { margin: 0; font-size: 13px; color: var(--chalk-faint); }
+.ws-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--gold); animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Scorekeeper: share panel */
+.share-code {
+  margin: 4px 0 6px;
+  text-align: center;
+  font-family: var(--display);
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  padding-top: 6px;
+  color: var(--gold);
+}
+.share-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--chalk-dim); }
+.share-status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--chalk-faint); }
+.share-status.live .dot { background: var(--red); animation: livePulse 2s ease-in-out infinite; }
+.share-status.live { color: var(--chalk); }
+.share-status.offline .dot { background: var(--gold); }
+.share-link { display: flex; gap: 8px; }
+.share-link input {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 14px;
+  color: var(--chalk-dim);
+}
+.share-link .btn { height: 48px; }
+
+@media (max-width: 520px) {
+  body.watch .brand-sm span { display: none; }
+  body.watch .topbar .btn-sm[data-do="tv"] { display: none; }
+}
+
+/* Share panel: QR codes and TV setup */
+.share-qr { width: min(220px, 62vw); margin: 2px auto 10px; padding: 8px; border-radius: 16px; background: #fff; line-height: 0; }
+.share-qr svg { width: 100%; height: auto; display: block; }
+.share-qr.small { width: min(170px, 50vw); }
+.share-qr:empty { display: none; }
+.share-actions { display: flex; justify-content: center; gap: 8px; }
+.share-actions .btn { min-height: 44px; }
+.tv-setup-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 14px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+}
+.tv-setup-toggle span { transition: transform 0.2s ease; }
+.tv-setup-toggle.open span { transform: rotate(180deg); }
+.tv-setup { margin-top: 10px; padding: 14px 12px 6px; border-radius: 14px; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); }
+.tv-setup .sheet-note { margin-top: 0; text-align: center; }
+.tv-setup .cs-row { flex-wrap: wrap; }
+.seg.seg-sm { width: auto; margin: 0; }
+.seg.seg-sm button { min-height: 36px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+
+/* TV display: join QR in the top bar */
+.tv-join { display: flex; align-items: center; gap: 10px; }
+.tv-join svg { width: clamp(64px, 6vw, 110px); height: auto; padding: 5px; border-radius: 10px; background: #fff; display: block; }
+.tv-join span { display: flex; flex-direction: column; font-size: 13px; font-weight: 700; color: var(--chalk-dim); text-align: right; order: -1; }
+.tv-join b { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 2vw, 36px); letter-spacing: 0.12em; color: var(--gold); line-height: 1; padding-top: 4px; }
+
+/* TV display: one click allows room sound */
+.sound-banner {
+  position: fixed;
+  z-index: 70;
+  left: 50%;
+  bottom: calc(var(--safe-b) + 16px);
+  transform: translateX(-50%);
+  padding: 14px 22px;
+  border-radius: 999px;
+  border: none;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.8);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+/* A phone or small tablet turned sideways as the TV display: exactly one screen, no page
+   scrolling. The chalkboard sizes to the screen height; only the player list scrolls. */
+@media (orientation: landscape) and (max-height: 600px) {
+  body.tv { overflow: hidden; }
+  body.tv .game { height: 100dvh; min-height: 0; overflow: hidden; }
+  body.tv .topbar {
+    padding: calc(var(--safe-t) + 4px) calc(env(safe-area-inset-right, 0px) + 12px) 4px calc(env(safe-area-inset-left, 0px) + 12px);
+  }
+  body.tv .brand-sm { font-size: 22px; }
+  body.tv .pill { padding: 4px 10px; }
+  body.tv .stage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 calc(env(safe-area-inset-right, 0px) + 10px) calc(var(--safe-b) + 8px) calc(env(safe-area-inset-left, 0px) + 10px);
+  }
+  body.tv .left { position: static; display: flex; min-height: 0; }
+  body.tv .now { flex: 1; display: flex; padding: 6px; border-radius: 18px; min-height: 0; }
+  body.tv .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4px 12px 10px; border-radius: 13px; }
+  body.tv .now-label { font-size: max(10px, 3vh); }
+  body.tv .now-name { font-size: calc(min(18cqi, 33vh) * var(--fit, 1)); margin: 0 0 1vh; }
+  body.tv .now-status { font-size: max(20px, 9vh); }
+  body.tv .now-next { font-size: max(18px, 8vh); margin-top: 1vh; }
+  body.tv .clock { font-size: max(18px, 8vh); top: 4px; right: 6px; }
+  body.tv .clock-bar { height: 6px; }
+  body.tv .board { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: 8px; }
+  body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+  body.tv .pc { min-height: max(34px, 11vh); padding: 3px 6px 3px 10px; border-radius: 10px; }
+  body.tv .pc-name { font-size: calc(max(17px, 6vh) * var(--nfit, 1)); }
+  body.tv .pc .chalk { width: max(22px, 7vh); height: max(22px, 7vh); }
+  body.tv .tag { top: -7px; font-size: 9px; }
+  .sound-banner { bottom: 8px; padding: 8px 16px; font-size: 14px; }
+  .tv-join svg { width: max(40px, 12vh); }
+  .tv-join span { font-size: 10px; }
+  .tv-join b { font-size: 16px; }
+}
+}
+
+/* Start screen: a quiet way in for watchers */
+.watch-entry {
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--chalk-dim);
+}
+.watch-entry:hover { color: var(--chalk); }
+.watch-form { display: flex; gap: 10px; margin-top: 4px; }
+.watch-form input {
+  flex: 1;
+  min-width: 0;
+  height: 64px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(244, 241, 232, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  font-family: var(--display);
+  font-size: 40px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--gold);
+}
+.watch-form input::placeholder { color: var(--chalk-faint); }
+.watch-form input:focus { outline: none; border-color: var(--brass); }
+.watch-form .btn-start { width: auto; padding: 0 22px; font-size: 26px; }
+.watch-error { margin: 10px 2px 0; font-size: 14px; font-weight: 600; color: #ff8a8d; }
+.link-btn { display: block; margin: 18px auto 0; border: none; background: none; font-size: 13px; color: var(--chalk-faint); text-decoration: underline; text-underline-offset: 3px; }
+.link-btn:hover { color: var(--chalk-dim); }
+body.watch .topbar .icon-btn[data-do="leaveWatch"] { width: 40px; height: 40px; font-size: 16px; }
+

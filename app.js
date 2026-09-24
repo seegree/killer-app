@@ -21,8 +21,33 @@
   // TV mode hides the tap buttons and relies on the keyboard, so only offer it
   // on devices with a mouse or trackpad (laptops/desktops), not phones or tablets.
   const canTV = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  const tvOn = () => !!S.tv && S.phase === 'playing' && canTV();
+  // The TV display (a watch link with &tv) uses the big-screen layout whenever it's landscape,
+  // so a phone or tablet turned sideways works as well as a laptop.
+  const landscape = () => window.matchMedia('(orientation: landscape)').matches;
+  const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
+
+  // ---------------------------------------------------------------- live sharing (setup)
+
+  // ?watch=CODE opens a read-only live view of someone else's game. It never touches this
+  // browser's own saved game.
+  const WATCH = (new URLSearchParams(location.search).get('watch') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || null;
+  const WATCH_TV = !!WATCH && new URLSearchParams(location.search).has('tv');
+  const SHARE_KEY = 'killer.share.v1';
+  // Where room sound plays while sharing: the operator's phone, or the TV display.
+  const ROOM_KEY = 'killer.room.v1';
+  let roomSound = (() => { try { return localStorage.getItem(ROOM_KEY) === 'tv' ? 'tv' : 'phone'; } catch (_) { return 'phone'; } })();
+  let remoteSound = { on: false, target: 'phone' }; // TV display: the operator's sound settings
+  let tvSoundEnabled = false; // TV display: someone clicked to allow sound
+  let tvSetupOpen = false;
+  let share = WATCH ? null : (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(SHARE_KEY));
+      return v && v.code ? v : null;
+    } catch (_) { return null; }
+  })(); // { code } while this phone is sharing its game
+  let shareStatus = 'connecting'; // connecting | live | offline
+  const remote = { status: 'connecting' }; // watch mode: connecting | live | missing | unreachable
 
   // ---------------------------------------------------------------- state
 
@@ -48,7 +73,7 @@
   const CLOCK_MIN = 10;
   const CLOCK_MAX = 120;
   const CLOCK_STEP = 5;
-  let clockPrefs = (() => {
+  let clockPrefs = WATCH ? { on: false, secs: 30 } : (() => {
     try {
       const c = JSON.parse(localStorage.getItem(CLOCK_KEY));
       if (c && typeof c.secs === 'number') return { on: !!c.on, secs: c.secs };
@@ -64,6 +89,7 @@
   }
 
   function load() {
+    if (WATCH) return null;
     try {
       const data = JSON.parse(localStorage.getItem(GAME_KEY));
       if (data && data.state && data.state.phase) {
@@ -75,7 +101,9 @@
   }
 
   function save() {
+    if (WATCH) return;
     try { localStorage.setItem(GAME_KEY, JSON.stringify({ state: S, history })); } catch (_) { /* storage unavailable */ }
+    queuePublish();
   }
 
   function loadRoster() {
@@ -223,6 +251,7 @@
     clockPrefs = { ...clockPrefs, ...changes };
     clockPrefs.secs = Math.min(CLOCK_MAX, Math.max(CLOCK_MIN, clockPrefs.secs));
     try { localStorage.setItem(CLOCK_KEY, JSON.stringify(clockPrefs)); } catch (_) { /* ignore */ }
+    queuePublish();
   }
 
   function clockLeft() {
@@ -233,16 +262,18 @@
 
   function startClock(id) {
     clk = { id, start: Date.now(), pausedAt: 0, expired: false };
+    queuePublish();
   }
 
   function pauseClock() {
-    if (clk && !clk.pausedAt) clk.pausedAt = Date.now();
+    if (clk && !clk.pausedAt) { clk.pausedAt = Date.now(); queuePublish(); }
   }
 
   function resumeClock() {
     if (!clk || !clk.pausedAt) return;
     clk.start += Date.now() - clk.pausedAt;
     clk.pausedAt = 0;
+    queuePublish();
   }
 
   function restartClock() {
@@ -305,7 +336,7 @@
   // Time's up: buzzer and a TIME! stamp. Nothing is scored; the group decides.
   function timeUp() {
     sfx.buzzer();
-    buzz([200, 100, 200]);
+    if (!WATCH) buzz([200, 100, 200]);
     showResult(null, 'time', 1800);
     render();
   }
@@ -653,7 +684,14 @@
   // ---------------------------------------------------------------- screens
 
   function render() {
+    document.body.classList.toggle('watch', !!WATCH);
+    if (WATCH && (remote.status !== 'live' || S.phase === 'setup')) {
+      document.body.classList.remove('tv', 'win');
+      renderWatchStatus();
+      return;
+    }
     document.body.classList.toggle('tv', tvOn());
+    document.body.classList.toggle('tv-display', WATCH_TV);
     document.body.classList.toggle('win', S.phase === 'finished');
     const justWon = S.phase === 'finished' && lastPhase === 'playing';
     if (S.phase !== 'finished') view = 'main';
@@ -663,6 +701,7 @@
     else if (view === 'recap') renderRecap();
     else renderWinner();
 
+    if (tvNeedsSoundClick()) app.insertAdjacentHTML('beforeend', '<button class="sound-banner" data-do="enableSound">🔊 Click to turn on sound for the room</button>');
     if (S.phase !== 'playing') flash.classList.remove('show');
     if (justWon) confetti();
     lastPhase = S.phase;
@@ -697,6 +736,7 @@
         <header class="hero">
           <h1 class="wordmark"><img src="wordmark.svg" alt="Killer"></h1>
           <p class="tagline">${START_LIVES} lives each · last one standing wins</p>
+          <button class="watch-entry" data-do="watchEntry">👀 Watch a game</button>
         </header>
 
         <form class="add" id="addForm" autocomplete="off">
@@ -770,13 +810,13 @@
     // the opening break, and the break after a re-rack, until that shot is scored.
     const lastEvent = [...S.log].reverse().find((e) => e.a === 'rack' || e.a === 'miss' || e.a === 'made');
     const breakShot = !lastEvent || lastEvent.a === 'rack';
-    const showClock = clockOn() && heldIdx < 0 && !breakShot;
-    if (showClock && (!clk || clk.id !== p.id)) startClock(p.id);
+    const showClock = clockOn() && heldIdx < 0 && !breakShot && (!WATCH || (clk && clk.id === p.id));
+    if (!WATCH && showClock && (!clk || clk.id !== p.id)) startClock(p.id);
     const paused = showClock && clk && clk.pausedAt;
     const cv = clockView();
     const clockHtml = showClock ? `
       <button class="clock${cv.paused ? ' paused' : ''}${cv.warn ? ' warn' : ''}${cv.time ? ' time' : ''}" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${cv.text}</span></button>
-      ${paused ? `<div class="clock-actions">
+      ${paused && !WATCH ? `<div class="clock-actions">
         <button data-do="clockResume" class="ca-go">▶ Resume</button>
         <button data-do="clockRerack">🎱 Re-rack</button>
         <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
@@ -808,13 +848,17 @@
           <div class="brand-sm">${LOGO}<span>Killer</span></div>
           <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out</div>
           ${tvOn()
-            ? '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
-            : '<button class="icon-btn" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>'}
+            ? WATCH_TV
+              ? `<div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div>`
+              : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
+            : WATCH
+              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}<button class="icon-btn" data-do="leaveWatch" aria-label="Leave and go back to my game">✕</button>`
+              : `<button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>`}
         </header>
 
         <div class="stage">
           <div class="left">
-            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused ? ' clock-paused' : ''}" aria-live="polite">
+            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused && !WATCH ? ' clock-paused' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
                 <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : 'Now shooting'}</div>
@@ -824,7 +868,7 @@
               </div>
             </section>
 
-            <section class="controls">
+            ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div></section>` : `            <section class="controls">
               <div class="lastline">
                 <span class="last-text">${lastText()}</span>
                 <button class="undo" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
@@ -841,7 +885,7 @@
                   ${S.turnBonus ? `<span class="badge">+${S.turnBonus}</span>` : ''}
                 </button>
               </div>
-            </section>
+            </section>`}
           </div>
 
           <section class="board" aria-label="Scoreboard">
@@ -849,7 +893,7 @@
           </section>
         </div>
 
-        ${tvOn() ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>${clockOn() ? '<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>' : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -872,14 +916,33 @@
                 <li><b>${w.lives}</b><span>lives left</span></li>
               </ul>` : ''}
             ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
-            <div class="win-actions">
+            ${WATCH ? '<div class="win-actions watching"><button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button></div>' : `<div class="win-actions">
               <button class="btn btn-start" data-do="rematch">Rematch</button>
               <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
               <button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button>
               <button class="btn btn-ghost" data-do="newgame">New game</button>
             </div>
+            <button class="watch-entry" data-do="watchEntry">👀 Watch a game</button>`}
           </div>
         </div>
+      </section>`;
+  }
+
+  // Watchers: connecting, between games, or a code that isn't live.
+  function renderWatchStatus() {
+    const msg = {
+      connecting: `Connecting to game <b>${esc(WATCH)}</b>…`,
+      live: 'The next game is being set up. Hang tight.',
+      missing: `Game <b>${esc(WATCH)}</b> isn't live right now. Check the code with your scorekeeper.`,
+      unreachable: 'Can’t reach the live game. Check your internet connection.',
+    }[remote.status];
+    app.innerHTML = `
+      <section class="watch-status">
+        <h1 class="wordmark"><img src="wordmark.svg" alt="Killer"></h1>
+        <p class="ws-msg">${msg}</p>
+        ${remote.status === 'connecting' ? '<div class="ws-spinner" aria-hidden="true"></div>' : ''}
+        <p class="ws-note">Live view · you can’t change anything</p>
+        <button class="btn btn-ghost" data-do="leaveWatch">← Back to my game</button>
       </section>`;
   }
 
@@ -1084,9 +1147,87 @@
   }
 
   const onOff = (on) => `<span class="state ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>`;
+  const watchLink = (code, tv) => `${location.origin}${location.pathname}?watch=${code}${tv ? '&tv' : ''}`;
+  const shareLink = () => share && watchLink(share.code, false);
+
+  // QR code as an inline SVG (black on white, so any camera can read it).
+  function qrSvg(text) {
+    if (!window.qrcode) return '';
+    try {
+      const q = window.qrcode(0, 'M');
+      q.addData(text);
+      q.make();
+      return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    } catch (_) { return ''; }
+  }
 
   function renderSheet() {
     if (!sheetMode) return closeSheet();
+
+    if (sheetMode.type === 'watch') {
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Watch a game</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">Enter the 5-letter code from the scorekeeper. Your own saved game stays exactly as it is.</p>
+          <form id="watchForm" class="watch-form" autocomplete="off">
+            <input type="text" id="watchCode" maxlength="5" placeholder="CODE" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-label="Game code">
+            <button class="btn btn-start" type="submit">Watch</button>
+          </form>
+          ${sheetMode.error ? `<p class="watch-error">${sheetMode.error}</p>` : ''}
+          <button class="link-btn" data-sheet="watchTv">Setting up the TV screen? Open it as the TV display</button>
+        </div>`;
+      setTimeout(() => { const box = $('#watchCode'); if (box) box.focus(); }, 50);
+      return;
+    }
+
+    if (sheetMode.type === 'share') {
+      const status = {
+        connecting: '<span class="dot"></span> Connecting…',
+        live: '<span class="dot"></span> Live: viewers see every tap',
+        offline: '<span class="dot"></span> Offline: scoring still works, viewers will catch up',
+      }[shareStatus];
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Share live</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          ${share ? `
+            <div class="share-qr">${qrSvg(shareLink())}</div>
+            <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
+            <p class="share-status ${shareStatus}">${status}</p>
+            <div class="share-actions">
+              <button class="btn btn-brass" data-sheet="copyLink">Copy link</button>
+              ${navigator.share ? '<button class="btn btn-ghost" data-sheet="sendLink">📤 Send…</button>' : ''}
+            </div>
+            <p class="sheet-note">Everyone scans this to watch on their phone. It’s view-only and always silent.</p>
+
+            <button class="tv-setup-toggle${tvSetupOpen ? ' open' : ''}" data-sheet="tvSetup" aria-expanded="${tvSetupOpen}">📺 Set up a TV screen <span aria-hidden="true">⌄</span></button>
+            ${tvSetupOpen ? `
+              <div class="tv-setup">
+                <div class="share-qr small">${qrSvg(watchLink(share.code, true))}</div>
+                <p class="sheet-note">Scan this with the device for the TV: a laptop, a tablet, or a phone turned sideways. It shows the big-screen board, with its own QR code so people can join.</p>
+                <div class="share-actions"><button class="btn btn-ghost" data-sheet="copyTvLink">Copy TV link</button></div>
+                <div class="cs-row">
+                  <span>Room sound plays on</span>
+                  <div class="seg seg-sm" role="radiogroup" aria-label="Room sound plays on">
+                    <button role="radio" class="${roomSound === 'phone' ? 'on' : ''}" aria-checked="${roomSound === 'phone'}" data-sheet="roomPhone">This phone</button>
+                    <button role="radio" class="${roomSound === 'tv' ? 'on' : ''}" aria-checked="${roomSound === 'tv'}" data-sheet="roomTv">TV screen</button>
+                  </div>
+                </div>
+                ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
+              </div>` : ''}
+
+            <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>`
+          : `
+            <p class="sheet-note">Show this game live on everyone’s phones, or on a TV. Viewers get a link and can’t change anything.</p>
+            <button class="sheet-btn primary" data-sheet="startShare">📡 Start sharing</button>`}
+        </div>`;
+      return;
+    }
 
     if (sheetMode.type === 'clock') {
       sheet.innerHTML = `
@@ -1144,9 +1285,11 @@
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
+          <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Enter a code to watch someone else’s game live</small></button>
+          <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
-          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
+          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && roomSound === 'tv' && soundOn ? 'Playing on the TV screen (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -1174,6 +1317,21 @@
       case 'sound': setSound(!soundOn); renderSheet(); sfx.extra(); break;
       case 'rerack': closeSheet(); rerack(); break;
       case 'clockPanel': openSheet({ type: 'clock' }); break;
+      case 'share': openSheet({ type: 'share' }); break;
+      case 'watch': openSheet({ type: 'watch' }); break;
+      case 'startShare': startSharing(); break;
+      case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
+      case 'copyLink': copyLink(shareLink()); break;
+      case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
+      case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
+      case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
+      case 'roomPhone': case 'roomTv':
+        roomSound = b.dataset.sheet === 'roomTv' ? 'tv' : 'phone';
+        try { localStorage.setItem(ROOM_KEY, roomSound); } catch (_) { /* ignore */ }
+        queuePublish();
+        renderSheet();
+        break;
+      case 'sendLink': navigator.share({ title: 'Killer: live game', url: shareLink() }).catch(() => {}); break;
       case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); clk = null; closeSheet(); render(); break;
@@ -1185,18 +1343,28 @@
   // ---------------------------------------------------------------- sound
   // Retro arcade effects synthesized with Web Audio — no audio files.
   const SOUND_KEY = 'killer.sound.v1';
-  let soundOn = (() => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; } })();
+  let soundOn = WATCH ? false : (() => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; } })();
   let actx = null;
   let master = null;
 
   function setSound(on) {
     soundOn = on;
     try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (_) { /* ignore */ }
+    queuePublish();
   }
+
+  // Only one device plays room sound. Viewers' phones never do; the TV display does only
+  // when the operator sends sound there (and someone has clicked to allow it).
+  function soundHere() {
+    if (WATCH) return WATCH_TV && tvSoundEnabled && remoteSound.on && remoteSound.target === 'tv';
+    return soundOn && !(share && roomSound === 'tv');
+  }
+  const tvNeedsSoundClick = () => WATCH_TV && remoteSound.on && remoteSound.target === 'tv'
+    && !(tvSoundEnabled && actx && actx.state === 'running');
 
   // Browsers only allow audio after a tap, which every sound here follows.
   function audio() {
-    if (!soundOn) return null;
+    if (!soundHere()) return null;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     if (actx && (actx.state === 'closed' || actx.state === 'interrupted')) {
@@ -1219,7 +1387,7 @@
   // not a touch-down. Wake it on those, with a silent blip that fully unlocks it. This also
   // readies the audio for sounds fired by a timer (shot clock ticks and buzzer).
   function unlockAudio() {
-    if (!soundOn) return;
+    if (!soundHere()) return;
     const ac = audio();
     if (!ac || ac.unlocked) return;
     try {
@@ -1502,9 +1670,12 @@
 
   // ---------------------------------------------------------------- events
 
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch'];
+
   app.addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if (!t || t.disabled) return;
+    if (WATCH && !WATCH_ALLOWED.includes(t.dataset.do)) return;
 
     if (t.dataset.act) {
       t.blur();
@@ -1533,6 +1704,9 @@
       case 'start': startGame(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
+      case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
+      case 'watchEntry': openSheet({ type: 'watch' }); break;
+      case 'leaveWatch': location.href = location.pathname; break;
       // Tapping the clock resumes it when paused; otherwise it opens the clock panel.
       case 'clock':
         if (clk && clk.pausedAt) resumeClock(); else pauseClock();
@@ -1569,7 +1743,19 @@
         box.focus();
       }
     } else if (form.id === 'lateForm') { addLate(text); closeSheet(); }
+    else if (form.id === 'watchForm') goWatch(text, false);
   });
+
+  // Open a shared game by its code (same page, so it stays inside the Home Screen app).
+  function goWatch(text, tv) {
+    const code = String(text).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length !== 5) {
+      sheetMode = { type: 'watch', error: 'Codes are 5 letters and numbers, like KXQ7R.' };
+      renderSheet();
+      return;
+    }
+    location.href = watchLink(code, tv);
+  }
 
   // Pasting a list (newlines/commas) adds everyone at once.
   document.addEventListener('paste', (e) => {
@@ -1629,6 +1815,11 @@
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
+    if (WATCH) {
+      if (S.phase === 'playing' && canTV() && (k === 't' || (k === 'escape' && S.tv))) { e.preventDefault(); toggleTV(); }
+      return;
+    }
+
     if (S.phase === 'playing') {
       if (k === 'x' || k === 'arrowleft') actMiss();
       else if (k === ' ' || k === 'arrowright' || k === 'enter') actMade();
@@ -1640,6 +1831,185 @@
       else return;
       e.preventDefault();
     }
+  });
+
+  // ---------------------------------------------------------------- live sharing
+
+  const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L mix-ups
+  const newCode = () => Array.from({ length: 5 }, () => CODE_CHARS[randInt(CODE_CHARS.length)]).join('');
+
+  function saveShare() {
+    try {
+      if (share) localStorage.setItem(SHARE_KEY, JSON.stringify(share));
+      else localStorage.removeItem(SHARE_KEY);
+    } catch (_) { /* ignore */ }
+  }
+
+  function setShareStatus(status) {
+    if (status === shareStatus) return;
+    shareStatus = status;
+    if (sheet.open && sheetMode && sheetMode.type === 'share') renderSheet();
+  }
+
+  // Watchers see the game, not this device's view settings or the setup list.
+  function publicState() {
+    const { tv, roster, ...rest } = S;
+    rest.room = { sound: soundOn, target: roomSound };
+    const off = serverOffset();
+    rest.clock = {
+      on: clockPrefs.on,
+      secs: clockPrefs.secs,
+      id: clk ? clk.id : null,
+      startedAt: clk ? clk.start + off : 0,
+      pausedAt: clk && clk.pausedAt ? clk.pausedAt + off : 0,
+    };
+    return rest;
+  }
+
+  // Milliseconds between this device's clock and Firebase's (0 until known).
+  const serverOffset = () => (window.killerLive ? window.killerLive.serverOffset() : 0);
+
+  // Viewers: rebuild the running clock from the shared one, in this device's time.
+  function applyRemoteClock(c) {
+    if (!c) { clockPrefs = { on: false, secs: 30 }; clk = null; return; }
+    clockPrefs = { on: !!c.on, secs: c.secs || 30 };
+    if (!c.id) { clk = null; return; }
+    const off = serverOffset();
+    const start = c.startedAt - off;
+    const same = clk && clk.id === c.id && Math.abs(clk.start - start) < 50;
+    clk = {
+      id: c.id,
+      start,
+      pausedAt: c.pausedAt ? c.pausedAt - off : 0,
+      expired: same ? clk.expired : false,
+      ticked: same ? clk.ticked : undefined,
+    };
+  }
+
+  // Bundle rapid taps into one update.
+  let publishTimer = 0;
+  function queuePublish() {
+    if (!share) return;
+    clearTimeout(publishTimer);
+    publishTimer = setTimeout(publishNow, 150);
+  }
+
+  async function publishNow() {
+    const live = window.killerLive;
+    if (!share || !live) return;
+    const code = share.code;
+    try {
+      await live.publish(code, publicState());
+      setShareStatus('live');
+    } catch (err) {
+      if (String(err && (err.code || err.message)).toUpperCase().includes('PERMISSION')) {
+        // The code belongs to another game (or this phone's ID changed): switch to a fresh code.
+        share = { code: newCode() };
+        saveShare();
+        toast('Sharing moved to a new code');
+        if (sheet.open) renderSheet();
+        return publishNow();
+      }
+      setShareStatus('offline');
+    }
+  }
+
+  function startSharing() {
+    share = { code: newCode() };
+    shareStatus = 'connecting';
+    saveShare();
+    renderSheet();
+    render();
+    if (!window.killerLive) setShareStatus('offline');
+    publishNow();
+  }
+
+  function stopSharing() {
+    const live = window.killerLive;
+    if (share && live) live.stop(share.code).catch(() => {});
+    share = null;
+    saveShare();
+    closeSheet();
+    render();
+    toast('Stopped sharing');
+  }
+
+  function copyLink(link) {
+    const done = () => toast('Link copied');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, () => selectLink());
+    else selectLink();
+  }
+
+  function selectLink() {
+    const input = sheet.querySelector('.share-link input');
+    if (input) { input.focus(); input.select(); }
+  }
+
+  // Watchers: show the same result stamps the scorekeeper sees, worked out from the new shots.
+  function stampFromRemote(added) {
+    if (S.phase !== 'playing' || !added.length) return;
+    const lastShot = [...added].reverse().find((e) => e.a !== 'rack');
+    if (!lastShot) return;
+    const p = byId(lastShot.p);
+    if (!p) return;
+    const knockedOut = added.find((e) => e.a === 'miss' && e.l <= 0);
+    if (knockedOut) {
+      const out = byId(knockedOut.p);
+      showResult(knockedOut.p, 'out', 1900);
+      if (out) flashOut(out.name);
+      if (S.phase === 'playing') sfx.out();
+    } else if (lastShot.a === 'miss') {
+      showResult(p.id, 'miss', 950);
+    } else if (lastShot.a === 'extra' && lastShot.late) {
+      showResult(p.id, 'extra', 1500, (S.last && S.last.bonus) || 1);
+      sfx.extra();
+    } else if (lastShot.a === 'made') {
+      const extras = added.filter((e) => e.a === 'extra' && !e.late && e.p === p.id).length;
+      if (extras) { showResult(p.id, 'extra', 1500, extras); sfx.extra(); }
+      else showResult(p.id, 'safe', 750);
+    }
+  }
+
+  function applyRemote(state) {
+    const wasLive = remote.status === 'live';
+    const prevLog = S.log || [];
+    const { clock, room, ...game } = state;
+    S = { ...freshState(), ...game, tv: S.tv };
+    applyRemoteClock(clock);
+    remoteSound = room ? { on: !!room.sound, target: room.target === 'tv' ? 'tv' : 'phone' } : { on: false, target: 'phone' };
+    remote.status = 'live';
+    if (!Array.isArray(S.log)) S.log = [];
+    if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
+    else if (wasLive) stampFromRemote(S.log.slice(prevLog.length));
+    render();
+  }
+
+  function startWatching() {
+    window.killerLive.watch(WATCH, applyRemote, () => {
+      remote.status = 'missing';
+      render();
+    });
+  }
+
+  function onLiveReady() {
+    if (WATCH) startWatching();
+    else if (share) publishNow();
+  }
+  if (window.killerLive) onLiveReady();
+  else window.addEventListener('killer:live-ready', onLiveReady, { once: true });
+  // If Firebase can't be loaded at all (offline, blocked), say so instead of spinning forever.
+  setTimeout(() => {
+    if (window.killerLive) return;
+    if (WATCH && remote.status === 'connecting') { remote.status = 'unreachable'; render(); }
+    if (share) setShareStatus('offline');
+  }, 10000);
+
+  window.matchMedia('(orientation: landscape)').addEventListener('change', () => render());
+
+  // The QR library loads in the background; draw any QR codes that were waiting for it.
+  window.addEventListener('killer:qr-ready', () => {
+    if (sheet.open) renderSheet();
+    if (WATCH_TV) render();
   });
 
   document.addEventListener('fullscreenchange', () => {

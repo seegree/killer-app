@@ -37,6 +37,9 @@
   <canvas id="confetti" aria-hidden="true"></canvas>
 
   <noscript><p style="padding:24px;color:#fff">Killer needs JavaScript turned on.</p></noscript>
+  <!-- QR codes for live sharing load in the background so they never hold up the app -->
+  <script async src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js" onload="window.dispatchEvent(new Event('killer:qr-ready'))"></script>
   <script src="app.js"></script>
+  <script type="module" src="live.js"></script>
 </body>
 </html>
