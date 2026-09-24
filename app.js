@@ -26,7 +26,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.24.3';
+  const APP_VERSION = '2026.09.24.4';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -316,6 +316,20 @@
       bar.style.transform = `scaleX(${v.scale})`;
       bar.parentElement.classList.toggle('warn', v.barWarn);
     }
+    // Final seconds: a huge red countdown over the lives row, and the chalkboard frame pulses.
+    const finalEl = document.getElementById('clockFinal');
+    const now = finalEl && finalEl.closest('.now');
+    if (finalEl && now) {
+      const n = v.warn ? String(Math.ceil(v.left / 1000)) : '';
+      now.classList.toggle('final', !!n);
+      if (finalEl.textContent !== n) {
+        finalEl.textContent = n;
+        if (n) sizeFinal(finalEl);
+        finalEl.classList.remove('beat');
+        void finalEl.offsetWidth; // restart the punch-in for each new number
+        if (n) finalEl.classList.add('beat');
+      }
+    }
     // Countdown ticks for the last 5 seconds, once per second (not while paused).
     const secs = Math.ceil(left / 1000);
     if (!clk.pausedAt && left > 0 && secs <= 5 && secs !== clk.ticked) {
@@ -326,6 +340,12 @@
       clk.expired = true;
       timeUp();
     }
+  }
+
+  // Final seconds take over the whole chalkboard: size the number to fill it.
+  function sizeFinal(el) {
+    const board = el.parentElement.getBoundingClientRect();
+    el.style.setProperty('--final-size', `${Math.min(board.height * 1.15, board.width * 0.6)}px`);
   }
 
   // A light 10-per-second timer keeps the clock moving while it's on. (Unlike an
@@ -712,6 +732,8 @@
     if (sheet.open) renderSheet();
     updateWakeLock();
     ensureClockLoop();
+    const finalNow = document.getElementById('clockFinal');
+    if (finalNow && finalNow.textContent) sizeFinal(finalNow);
   }
 
   function renderSetup() {
@@ -823,6 +845,7 @@
         <button data-do="clockRerack">🎱 Re-rack</button>
         <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
       </div>` : ''}
+      <div class="clock-final${cv.warn ? ' beat' : ''}" id="clockFinal" aria-hidden="true">${cv.warn ? Math.ceil(cv.left / 1000) : ''}</div>
       <div class="clock-bar${cv.barWarn ? ' warn' : ''}" aria-hidden="true"><i id="clockBar" style="transform:scaleX(${cv.scale})"></i></div>`
       : clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '';
 
@@ -860,7 +883,7 @@
 
         <div class="stage">
           <div class="left">
-            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused && !WATCH ? ' clock-paused' : ''}" aria-live="polite">
+            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused && !WATCH ? ' clock-paused' : ''}${showClock && cv.warn ? ' final' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
                 <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : 'Now shooting'}</div>

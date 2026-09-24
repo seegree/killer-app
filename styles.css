@@ -404,6 +404,7 @@ kbd {
   line-height: 1.1;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
+  transition: font-size 0.25s ease, padding 0.25s ease;
   color: var(--chalk);
 }
 .clock.warn { background: rgba(229, 72, 77, 0.85); border-color: transparent; animation: clockPulse 1s ease-in-out infinite; }
@@ -438,10 +439,42 @@ kbd {
 }
 .clock-actions .ca-go { background: var(--green); border-color: transparent; color: #06140d; }
 .now.clock-paused .now-next { visibility: hidden; }
-.clock-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; background: rgba(0, 0, 0, 0.35); }
+.clock-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; background: rgba(0, 0, 0, 0.35); }
 .clock-bar i { display: block; height: 100%; background: var(--chalk); opacity: 0.7; transform-origin: left center; transition: transform 0.1s linear; }
 .clock-bar.warn i { background: var(--red); opacity: 1; }
-body.tv .clock-bar { height: 12px; }
+body.tv .clock-bar { height: 20px; }
+
+/* Final 5 seconds: a red countdown takes over the whole chalkboard, the frame pulses red,
+   and the corner timer hides so there's only one countdown. The red bar stays in front. */
+.clock-final {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(7, 16, 12, 0.78);
+  font-family: var(--display);
+  font-size: var(--final-size, 200px);
+  line-height: 1;
+  color: #ff5a52;
+  text-shadow: 0 0 40px rgba(229, 72, 77, 0.6), 0 6px 0 rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.clock-final:empty { display: none; }
+.clock-final.beat { animation: finalBeat 1s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+@keyframes finalBeat {
+  0% { color: rgba(255, 90, 82, 0); font-size: calc(var(--final-size, 200px) * 1.4); }
+  18% { color: #ff5a52; font-size: var(--final-size, 200px); }
+  100% { color: rgba(255, 90, 82, 0.75); font-size: calc(var(--final-size, 200px) * 0.95); }
+}
+.now.final .clock { visibility: hidden; }
+.clock-bar { z-index: 3; }
+.now.final { animation: framePulse 1s ease-in-out infinite; }
+@keyframes framePulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.9), 0 0 40px 6px rgba(229, 72, 77, 0.55), 0 24px 50px -24px #000; }
+  50% { box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.35), 0 0 16px 2px rgba(229, 72, 77, 0.2), 0 24px 50px -24px #000; }
+}
 
 /* Setup: shot clock switch and seconds */
 .clock-setting { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 8px 10px; border-radius: 14px; background: #10211a; border: 1px solid var(--line); }
@@ -1251,4 +1284,3 @@ body.watch .pc:active { transform: none; }
 .link-btn { display: block; margin: 18px auto 0; border: none; background: none; font-size: 13px; color: var(--chalk-faint); text-decoration: underline; text-underline-offset: 3px; }
 .link-btn:hover { color: var(--chalk-dim); }
 body.watch .topbar .icon-btn[data-do="leaveWatch"] { width: 40px; height: 40px; font-size: 16px; }
-
