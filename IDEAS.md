@@ -26,6 +26,15 @@ A read-only live copy of the current game that anyone can open, on their own pho
 - **Done on the branch:** sharing and the watch page; the shot clock synced to server time; the TV link with big-screen and sideways-phone layouts; room sound routing; QR codes on the Share screen and a join QR on the TV.
 - **Still to do:** optional "follow me" alerts when you're next (a sound and screen flash; vibration on Android only).
 
+## "Everyone" room sound: party mode 🎉 (parked, experimental)
+*Suggested September 2026, while building live sharing.*
+
+A third choice in Share live: **Room sound plays on: This phone | TV screen | Everyone**. Every phone watching the game plays the sounds together, as a fun "nuclear option" to get the room's attention.
+- **Sync, not cacophony:** every screen already shares Firebase's clock. Shot clock ticks and the buzzer are calculated from it, so they'd already play together. For events (knockout, coin, William Tell fanfare), the operator stamps each one with the server time, and every device (operator, TV and phones) plays it about 1 second later, all at once. A device that receives it too late skips the sound rather than playing out of step.
+- **Opt-in per phone:** browsers require one tap before a page can play sound, so viewers see a "🔊 Join the room sound" banner, plus a way to turn it off again.
+- **Limits:** iPhones with the silent switch on stay silent. Sync should be within a few hundredths of a second.
+- **Bonus:** the TV screen mode could use the same scheduling, so the TV plays exactly in time too.
+
 ## Operator's phone in landscape (parked)
 *Noted September 2026.*
 
