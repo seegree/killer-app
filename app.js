@@ -41,7 +41,22 @@
   let view = 'main'; // 'main' | 'recap' on a finished game
   // Brief result shown on the chalkboard. For Made/Miss the board holds on the shooter
   // (fb.id) before moving on; any new tap ends it early and still scores the right player.
-  let fb = null; // { id, kind: 'safe' | 'miss' | 'out' | 'extra', timer }
+  let fb = null; // { id, kind: 'safe' | 'miss' | 'out' | 'extra' | 'time', timer }
+
+  // Shot clock: settings are remembered per device; the running clock is never saved.
+  const CLOCK_KEY = 'killer.clock.v1';
+  const CLOCK_MIN = 10;
+  const CLOCK_MAX = 120;
+  const CLOCK_STEP = 5;
+  let clockPrefs = (() => {
+    try {
+      const c = JSON.parse(localStorage.getItem(CLOCK_KEY));
+      if (c && typeof c.secs === 'number') return { on: !!c.on, secs: c.secs };
+    } catch (_) { /* ignore */ }
+    return { on: false, secs: 30 };
+  })();
+  let clk = null; // { id, start, pausedAt, expired, ticked } for the player on the board
+  let clockRaf = 0; // interval id while the clock is running
   let recapTab = 'awards';
 
   function freshState() {
@@ -92,6 +107,7 @@
   function undo() {
     if (!history.length) return;
     clearResult(false);
+    clk = null;
     sfx.stop();
     const { tv, log } = S;
     const { logLen = 0, ...prev } = JSON.parse(history.pop());
@@ -198,6 +214,94 @@
   const livesLabel = (n) => (n <= 0 ? 'out' : n === 1 ? 'last life' : `${n} lives left`);
 
   // ---------------------------------------------------------------- shot actions
+
+  // ---------------------------------------------------------------- shot clock
+
+  const clockOn = () => clockPrefs.on && S.phase === 'playing';
+
+  function setClockPrefs(changes) {
+    clockPrefs = { ...clockPrefs, ...changes };
+    clockPrefs.secs = Math.min(CLOCK_MAX, Math.max(CLOCK_MIN, clockPrefs.secs));
+    try { localStorage.setItem(CLOCK_KEY, JSON.stringify(clockPrefs)); } catch (_) { /* ignore */ }
+  }
+
+  function clockLeft() {
+    if (!clk) return clockPrefs.secs * 1000;
+    const now = clk.pausedAt || Date.now();
+    return Math.max(0, clockPrefs.secs * 1000 - (now - clk.start));
+  }
+
+  function startClock(id) {
+    clk = { id, start: Date.now(), pausedAt: 0, expired: false };
+  }
+
+  function pauseClock() {
+    if (clk && !clk.pausedAt) clk.pausedAt = Date.now();
+  }
+
+  function resumeClock() {
+    if (!clk || !clk.pausedAt) return;
+    clk.start += Date.now() - clk.pausedAt;
+    clk.pausedAt = 0;
+  }
+
+  function restartClock() {
+    if (clk) startClock(clk.id);
+  }
+
+  // Updates just the clock's number and bar, without redrawing the page.
+  function paintClock() {
+    if (!clockOn() || !clk) return;
+    const num = document.getElementById('clockNum');
+    const bar = document.getElementById('clockBar');
+    const left = clockLeft();
+    if (num) {
+      const chip = num.closest('.clock');
+      num.textContent = clk.pausedAt ? 'Paused' : left ? Math.ceil(left / 1000) : 'Time';
+      chip.classList.toggle('paused', !!clk.pausedAt);
+      chip.classList.toggle('warn', !clk.pausedAt && left > 0 && left <= 5000);
+      chip.classList.toggle('time', !clk.pausedAt && left === 0);
+    }
+    if (bar) {
+      bar.style.transform = `scaleX(${left / (clockPrefs.secs * 1000)})`;
+      bar.parentElement.classList.toggle('warn', left <= 5000);
+    }
+    // Countdown ticks for the last 5 seconds, once per second (not while paused).
+    const secs = Math.ceil(left / 1000);
+    if (!clk.pausedAt && left > 0 && secs <= 5 && secs !== clk.ticked) {
+      clk.ticked = secs;
+      sfx.tick(secs === 1);
+    }
+    if (left === 0 && !clk.expired && !clk.pausedAt) {
+      clk.expired = true;
+      timeUp();
+    }
+  }
+
+  // A light 10-per-second timer keeps the clock moving while it's on. (Unlike an
+  // animation-frame loop, it keeps running when the page isn't being painted.)
+  function ensureClockLoop() {
+    if (clockOn() && !clockRaf) clockRaf = setInterval(paintClock, 100);
+    if (!clockOn() && clockRaf) { clearInterval(clockRaf); clockRaf = 0; }
+  }
+
+  // Time's up: buzzer and a TIME! stamp. Nothing is scored; the group decides.
+  function timeUp() {
+    sfx.buzzer();
+    buzz([200, 100, 200]);
+    showResult(null, 'time', 1800);
+    render();
+  }
+
+  function rerack() {
+    const p = current();
+    if (!p || S.phase !== 'playing') return;
+    commit(() => {
+      S.log.push({ p: p.id, a: 'rack' });
+      S.last = { type: 'rack', id: p.id, name: p.name };
+    });
+    clk = null; // the break isn't timed; the next shooter gets a fresh clock
+  }
 
   function showResult(id, kind, ms, n = 0) {
     clearResult(false);
@@ -324,6 +428,8 @@
     prevLives.clear();
     prevCurrentId = null;
     S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', players: names.map(newPlayer) };
+    S.log.push({ p: S.players[0].id, a: 'rack' }); // the first shooter breaks
+    clk = null;
     save();
     render();
   }
@@ -522,6 +628,7 @@
       case 'shoot': return `${n} moved up to shoot`;
       case 'add': return `${n} joined the game`;
       case 'remove': return `${n} left the game`;
+      case 'rack': return `Re-rack · ${n} breaks`;
       default: return '';
     }
   }
@@ -546,6 +653,7 @@
     S.players.forEach((p) => prevLives.set(p.id, p.lives));
     if (sheet.open) renderSheet();
     updateWakeLock();
+    ensureClockLoop();
   }
 
   function renderSetup() {
@@ -592,6 +700,15 @@
         ${list}
 
         <div class="setup-foot">
+          <div class="clock-setting">
+            <button class="switch${clockPrefs.on ? ' on' : ''}" data-do="clockToggle" role="switch" aria-checked="${clockPrefs.on}" aria-label="Shot clock"><i></i></button>
+            <span class="cs-label">⏱ Shot clock</span>
+            <div class="cs-stepper${clockPrefs.on ? '' : ' off'}">
+              <button data-do="clockLess" aria-label="Less time" ${clockPrefs.secs <= CLOCK_MIN ? 'disabled' : ''}>−</button>
+              <b>${clockPrefs.secs} sec</b>
+              <button data-do="clockMore" aria-label="More time" ${clockPrefs.secs >= CLOCK_MAX ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
           <button class="btn btn-start" data-do="start" ${r.length < 2 ? 'disabled' : ''}>
             ${r.length < 2 ? 'Add at least 2 players' : `Rack ’em · ${r.length} players`}
           </button>
@@ -627,9 +744,27 @@
       safe: '✓ Safe',
       miss: 'Miss',
       extra: `+${fb.n} ${fb.n > 1 ? 'lives' : 'life'}`,
+      time: 'Time!',
     }[fb.kind];
     const stamp = stampText ? `<div class="now-stamp ${fb.kind}" aria-hidden="true">${stampText}</div>` : '';
     const livesText = p.lives <= 0 ? 'Out' : p.lives === 1 ? 'Last life' : `${p.lives} lives left`;
+
+    // The clock starts once the board has moved on to the new shooter. Breaks aren't timed:
+    // the opening break, and the break after a re-rack, until that shot is scored.
+    const lastEvent = [...S.log].reverse().find((e) => e.a === 'rack' || e.a === 'miss' || e.a === 'made');
+    const breakShot = !lastEvent || lastEvent.a === 'rack';
+    const showClock = clockOn() && heldIdx < 0 && !breakShot;
+    if (showClock && (!clk || clk.id !== p.id)) startClock(p.id);
+    const paused = showClock && clk && clk.pausedAt;
+    const clockHtml = showClock ? `
+      <button class="clock" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${Math.ceil(clockLeft() / 1000)}</span></button>
+      ${paused ? `<div class="clock-actions">
+        <button data-do="clockResume" class="ca-go">▶ Resume</button>
+        <button data-do="clockRerack">🎱 Re-rack</button>
+        <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
+      </div>` : ''}
+      <div class="clock-bar" aria-hidden="true"><i id="clockBar"></i></div>`
+      : clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '';
 
     const cards = board.map((x) => {
       const isCur = x.id === p.id;
@@ -661,9 +796,9 @@
 
         <div class="stage">
           <div class="left">
-            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}" aria-live="polite">
+            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused ? ' clock-paused' : ''}" aria-live="polite">
               <div class="now-felt">
-                ${stamp}
+                ${stamp}${clockHtml}
                 <div class="now-label">Now shooting</div>
                 <div class="now-name" style="--fit:${fit(p.name)}">${esc(p.name)}</div>
                 <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives <= 1 ? ' last' : ''}">${livesText}</span></div>
@@ -696,7 +831,7 @@
           </section>
         </div>
 
-        ${tvOn() ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() ? `<footer class="tv-keys"><span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>${clockOn() ? '<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>' : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -736,13 +871,17 @@
   function gameStats() {
     const stats = new Map(S.players.map((p) => [p.id, {
       p, turns: 0, streak: 0, best: 0, opening: 0, openingLive: true,
-      edgeTurns: 0, comeback: false, hatTrick: false, outRound: null, leaves: 0, results: [],
+      edgeTurns: 0, comeback: false, hatTrick: false, outRound: null, leaves: 0, results: [], breaks: 0,
     }]));
     let prevTurn = null; // the last shot that ended a turn
     let extras = 0; // extra lives earned so far this turn
     let lastExtras = 0; // extra lives in the turn that just ended (for quick extra taps)
     for (const e of S.log || []) {
       const st = stats.get(e.p);
+      if (e.a === 'rack') {
+        if (st) st.breaks++;
+        continue;
+      }
       if (e.a === 'extra') {
         if (st && e.l === 2) st.comeback = true; // went from last life back to two
         if (e.late) {
@@ -789,6 +928,7 @@
     nineLives: 2, // extra lives earned
     edge: 4, // turns survived on the last life
     toughestLeave: 3, // players out right after your turn
+    breaks: 2, // racks broken (the opening break plus re-racks)
     meltdownPots: 3, // potted this many before collapsing
   };
 
@@ -850,6 +990,7 @@
       const m = meltdown(st);
       return `Potted ${m.before}, then missed ${m.window === 3 ? 'their last 3' : '3 of their last 4'}`;
     });
+    add('🎱', 'Dems da Breaks', top((st) => st.breaks, AWARD_MIN.breaks), (st) => `Broke ${st.breaks} racks`);
     add('🥶', 'Ice Cold', all.filter((st) => st.p.lives <= 0 && st.p.pots === 0), () => 'Out without potting a ball');
     return list;
   }
@@ -927,6 +1068,27 @@
   function renderSheet() {
     if (!sheetMode) return closeSheet();
 
+    if (sheetMode.type === 'clock') {
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Shot clock</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">${clockPrefs.on ? 'Tap the clock on the chalkboard to pause it, re-rack or restart.' : 'A countdown for each shot, with a buzzer at zero. It never scores anything.'}</p>
+          <div class="cs-row">
+            <span>Time per shot</span>
+            <div class="cs-stepper">
+              <button data-sheet="clockLess" aria-label="Less time" ${clockPrefs.secs <= CLOCK_MIN ? 'disabled' : ''}>−</button>
+              <b>${clockPrefs.secs} sec</b>
+              <button data-sheet="clockMore" aria-label="More time" ${clockPrefs.secs >= CLOCK_MAX ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+          <button class="sheet-btn${clockPrefs.on ? ' danger' : ' primary'}" data-sheet="clockToggle">${clockPrefs.on ? 'Turn shot clock off' : '⏱ Turn shot clock on'}</button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'player') {
       const p = byId(sheetMode.id);
       if (!p || S.phase !== 'playing') return closeSheet();
@@ -962,6 +1124,8 @@
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
           ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
+          <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
+          <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock: ${clockPrefs.on ? `on · ${clockPrefs.secs} sec` : 'off'}<small>Turn it on or off, or change the time</small></button>
           <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound on' : '🔇 Sound off'}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
@@ -988,6 +1152,11 @@
       case 'remove': if (p && confirmTap(b, 'remove')) { removePlayer(p); closeSheet(); } break;
       case 'tv': closeSheet(); toggleTV(); break;
       case 'sound': setSound(!soundOn); renderSheet(); sfx.extra(); break;
+      case 'rerack': closeSheet(); rerack(); break;
+      case 'clockPanel': openSheet({ type: 'clock' }); break;
+      case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); restartClock(); renderSheet(); break;
+      case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); restartClock(); renderSheet(); break;
+      case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); clk = null; closeSheet(); render(); break;
       case 'rematch': if (confirmTap(b, 'rematch')) { closeSheet(); rematch(); } break;
       case 'newgame': if (confirmTap(b, 'newgame')) { closeSheet(); newGame(); } break;
     }
@@ -1025,6 +1194,9 @@
     if (actx.state === 'suspended') actx.resume().catch(() => {});
     return actx;
   }
+
+  // The buzzer fires on a timer, not a tap, so wake the audio on every tap while the clock is on.
+  document.addEventListener('pointerdown', () => { if (soundOn && clockOn()) audio(); }, true);
 
   // iOS can leave page audio silently dead after switching apps. Drop it when the app is
   // hidden; the next sound (always after a tap) builds a fresh one.
@@ -1154,6 +1326,19 @@
       if (!ac) return;
       note(ac, { f: 330, to: 82, d: 0.85, type: 'square', vol: 0.12, hold: true, lowpass: 900 });
       note(ac, { f: 165, to: 41, d: 0.85, type: 'triangle', vol: 0.14, hold: true });
+    },
+    // Shot clock countdown: soft ticks, with a brighter pip on the final second.
+    tick(final) {
+      const ac = audio();
+      if (!ac) return;
+      note(ac, { f: final ? 2093 : 1760, d: final ? 0.22 : 0.08, type: 'square', vol: final ? 0.2 : 0.15, lowpass: 5000 });
+    },
+    // Shot clock buzzer: a short, low, slightly detuned blast.
+    buzzer() {
+      const ac = audio();
+      if (!ac) return;
+      note(ac, { f: 110, d: 0.7, type: 'sawtooth', vol: 0.16, hold: true, lowpass: 900 });
+      note(ac, { f: 116.5, d: 0.7, type: 'square', vol: 0.07, hold: true, lowpass: 700 });
     },
     // Victory: the William Tell trumpet call, trumpets over horns, ending on a held B major chord.
     win() {
@@ -1314,6 +1499,17 @@
       case 'start': startGame(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
+      // Tapping the clock resumes it when paused; otherwise it opens the clock panel.
+      case 'clock':
+        if (clk && clk.pausedAt) resumeClock(); else pauseClock();
+        render();
+        break;
+      case 'clockResume': resumeClock(); render(); break;
+      case 'clockRestart': restartClock(); render(); break;
+      case 'clockRerack': rerack(); break;
+      case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); render(); break;
+      case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); render(); break;
+      case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); render(); break;
       case 'menu': openSheet({ type: 'menu' }); break;
       case 'tv': toggleTV(); break;
       case 'rematch': rematch(); break;
@@ -1404,6 +1600,9 @@
       else if (k === ' ' || k === 'arrowright' || k === 'enter') actMade();
       else if (k === 'e' || k === 'arrowup' || k === '+' || k === '=') actExtra();
       else if (canTV() && (k === 't' || (k === 'escape' && S.tv))) toggleTV();
+      else if (k === 'p' && clockOn()) { if (clk && clk.pausedAt) resumeClock(); else pauseClock(); render(); }
+      else if (k === 'r' && clockOn()) { restartClock(); render(); }
+      else if (k === 'b') rerack();
       else return;
       e.preventDefault();
     }

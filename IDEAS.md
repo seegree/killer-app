@@ -2,7 +2,7 @@
 
 Feature requests from pool nights, parked until we decide to build them.
 
-## Shot clock ⭐ (favourite)
+## Shot clock ⭐ (favourite) — shipped
 *Requested at the first live game (27 players), September 2026.*
 
 An optional timer to keep the game moving.
@@ -10,7 +10,9 @@ An optional timer to keep the game moving.
 - Starts counting when a player comes up to shoot, and resets on every Miss, Made or Extra life.
 - When time runs out: a buzzer sound and a big "TIME!" on the chalkboard. It doesn't score anything automatically; the group decides what happens.
 - Needs to be easy to read across the room: a draining bar or countdown on the chalkboard, turning red for the last few seconds.
-- Open questions: should Undo reset the clock? Should there be a pause button for a rack or a break?
+- Decided: never scores automatically. Undo resets the clock. Tap the clock to **pause** (for a re-rack) or **restart** it.
+- Starts automatically when the next name appears on the chalkboard.
+- Bonus: log each re-rack pause to feed a new Recap award, **"Dems da Breaks"**, for the player who broke the most racks (minimum 2).
 
 ## Buzz players' phones when it's their turn (parked)
 *Requested at the first live game.*
