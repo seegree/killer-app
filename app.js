@@ -2006,6 +2006,12 @@
 
   window.matchMedia('(orientation: landscape)').addEventListener('change', () => render());
 
+  // The QR library loads in the background; draw any QR codes that were waiting for it.
+  window.addEventListener('killer:qr-ready', () => {
+    if (sheet.open) renderSheet();
+    if (WATCH_TV) render();
+  });
+
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && S.tv && S.phase === 'playing') { S.tv = false; save(); render(); }
   });
