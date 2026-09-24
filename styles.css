@@ -459,10 +459,28 @@ body.tv .clock-bar { height: 20px; }
   line-height: 1;
   color: #ff5a52;
   text-shadow: 0 0 40px rgba(229, 72, 77, 0.6), 0 6px 0 rgba(0, 0, 0, 0.35);
-  pointer-events: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
-.clock-final:empty { display: none; }
-.clock-final.beat { animation: finalBeat 1s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.clock-final { display: none; }
+.now.final .clock-final { display: grid; }
+body.watch .clock-final { cursor: default; }
+.clock-final span { font-size: var(--final-size, 200px); line-height: 1; }
+.clock-final span.beat { animation: finalBeat 1s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.clock-final small {
+  position: absolute;
+  bottom: 18px;
+  left: 0;
+  right: 0;
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: none;
+  color: rgba(244, 241, 232, 0.6);
+}
 @keyframes finalBeat {
   0% { color: rgba(255, 90, 82, 0); font-size: calc(var(--final-size, 200px) * 1.4); }
   18% { color: #ff5a52; font-size: var(--final-size, 200px); }
@@ -1284,3 +1302,11 @@ body.watch .pc:active { transform: none; }
 .link-btn { display: block; margin: 18px auto 0; border: none; background: none; font-size: 13px; color: var(--chalk-faint); text-decoration: underline; text-underline-offset: 3px; }
 .link-btn:hover { color: var(--chalk-dim); }
 body.watch .topbar .icon-btn[data-do="leaveWatch"] { width: 40px; height: 40px; font-size: 16px; }
+
+/* Operator's top bar: Re-rack and TV on laptops and tablets (phones keep just the menu) */
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.top-extra { display: none; }
+@media (min-width: 700px) {
+  .top-extra { display: inline-flex; }
+}
+
