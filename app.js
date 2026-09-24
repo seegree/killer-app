@@ -26,7 +26,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.24.4';
+  const APP_VERSION = '2026.09.24.5';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -423,7 +423,7 @@
 
   // Final seconds take over the whole chalkboard: size the number to fill it.
   function sizeFinal(el) {
-    const board = el.parentElement.getBoundingClientRect();
+    const board = el.closest('.now-felt').getBoundingClientRect();
     el.style.setProperty('--final-size', `${Math.min(board.height * 1.15, board.width * 0.6)}px`);
   }
 
@@ -926,7 +926,7 @@
         <button data-do="clockRerack">🎱 Re-rack</button>
         <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
       </div>` : ''}
-      <div class="clock-final${cv.warn ? ' beat' : ''}" id="clockFinal" aria-hidden="true">${cv.warn ? Math.ceil(cv.left / 1000) : ''}</div>
+      <button class="clock-final" data-do="clock" aria-label="Pause shot clock" tabindex="-1"><span class="${cv.warn ? 'beat' : ''}" id="clockFinal">${cv.warn ? Math.ceil(cv.left / 1000) : ''}</span>${WATCH ? '' : '<small>Tap to pause</small>'}</button>
       <div class="clock-bar${cv.barWarn ? ' warn' : ''}" aria-hidden="true"><i id="clockBar" style="transform:scaleX(${cv.scale})"></i></div>`
       : clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '';
 
@@ -961,7 +961,11 @@
               : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : WATCH
               ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}<button class="icon-btn" data-do="leaveWatch" aria-label="Leave and go back to my game">✕</button>`
-              : `<button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>`}
+              : `<div class="top-actions">
+                  <button class="btn btn-ghost btn-sm top-extra" data-do="rerackTop" title="Re-rack (B)">🎱 Re-rack</button>
+                  ${canTV() ? '<button class="btn btn-ghost btn-sm top-extra" data-do="tv" title="TV mode (T)">📺 TV</button>' : ''}
+                  <button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>
+                </div>`}
         </header>
 
         <div class="stage">
@@ -1942,6 +1946,7 @@
       case 'start': startGame(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
+      case 'rerackTop': rerack(); toast(`🎱 Re-rack · ${current() ? current().name : ''} breaks`); break;
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       case 'watchEntry': openSheet({ type: 'watch' }); break;
       case 'whoami': openSheet({ type: 'who' }); break;
