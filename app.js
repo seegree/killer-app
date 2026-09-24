@@ -799,7 +799,7 @@
             <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused ? ' clock-paused' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
-                <div class="now-label">Now shooting</div>
+                <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : 'Now shooting'}</div>
                 <div class="now-name" style="--fit:${fit(p.name)}">${esc(p.name)}</div>
                 <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives <= 1 ? ' last' : ''}">${livesText}</span></div>
                 <div class="now-next">${nextLine}</div>
@@ -1195,8 +1195,22 @@
     return actx;
   }
 
-  // The buzzer fires on a timer, not a tap, so wake the audio on every tap while the clock is on.
-  document.addEventListener('pointerdown', () => { if (soundOn && clockOn()) audio(); }, true);
+  // iPhones only allow page audio to start from a completed tap (finger lifted) or a key press,
+  // not a touch-down. Wake it on those, with a silent blip that fully unlocks it. This also
+  // readies the audio for sounds fired by a timer (shot clock ticks and buzzer).
+  function unlockAudio() {
+    if (!soundOn) return;
+    const ac = audio();
+    if (!ac || ac.unlocked) return;
+    try {
+      const blip = ac.createBufferSource();
+      blip.buffer = ac.createBuffer(1, 1, 22050);
+      blip.connect(ac.destination);
+      blip.start(0);
+      if (ac.state === 'running') ac.unlocked = true;
+    } catch (_) { /* try again on the next tap */ }
+  }
+  ['touchend', 'click', 'keydown'].forEach((type) => document.addEventListener(type, unlockAudio, true));
 
   // iOS can leave page audio silently dead after switching apps. Drop it when the app is
   // hidden; the next sound (always after a tap) builds a fresh one.

@@ -485,7 +485,7 @@ body.tv .clock-bar { height: 12px; }
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(244, 241, 232, 0.72);
+  color: var(--gold);
 }
 .nx-name { font-family: var(--display); line-height: 1; padding-top: 0.08em; letter-spacing: 0.03em; white-space: nowrap; }
 .nx-sep { width: 1px; height: 0.8em; background: rgba(244, 241, 232, 0.25); }
@@ -686,7 +686,7 @@ body.tv .now-label { font-size: clamp(12px, 1.1vw, 18px); }
 body.tv .now-status { font-size: clamp(44px, 4.4vw, 90px); }
 /* On the TV, who's next matters almost as much as who's up: big names, gold labels. */
 body.tv .now-next { font-size: clamp(40px, 4.8vw, 100px); margin-top: 0.2em; gap: 0.2em 0.9em; }
-body.tv .nx-label { color: var(--gold); font-size: 0.34em; }
+body.tv .nx-label { font-size: 0.34em; }
 body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 12.5vw, 260px), 1fr)); }
 body.tv .board-grid { gap: 10px; }
 body.tv .pc { min-height: clamp(50px, 3.7vw, 72px); padding-top: 5px; padding-bottom: 5px; }
