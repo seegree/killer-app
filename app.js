@@ -21,7 +21,10 @@
   // TV mode hides the tap buttons and relies on the keyboard, so only offer it
   // on devices with a mouse or trackpad (laptops/desktops), not phones or tablets.
   const canTV = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  const tvOn = () => !!S.tv && S.phase === 'playing' && canTV();
+  // The TV display (a watch link with &tv) uses the big-screen layout whenever it's landscape,
+  // so a phone or tablet turned sideways works as well as a laptop.
+  const landscape = () => window.matchMedia('(orientation: landscape)').matches;
+  const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -29,7 +32,14 @@
   // ?watch=CODE opens a read-only live view of someone else's game. It never touches this
   // browser's own saved game.
   const WATCH = (new URLSearchParams(location.search).get('watch') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || null;
+  const WATCH_TV = !!WATCH && new URLSearchParams(location.search).has('tv');
   const SHARE_KEY = 'killer.share.v1';
+  // Where room sound plays while sharing: the operator's phone, or the TV display.
+  const ROOM_KEY = 'killer.room.v1';
+  let roomSound = (() => { try { return localStorage.getItem(ROOM_KEY) === 'tv' ? 'tv' : 'phone'; } catch (_) { return 'phone'; } })();
+  let remoteSound = { on: false, target: 'phone' }; // TV display: the operator's sound settings
+  let tvSoundEnabled = false; // TV display: someone clicked to allow sound
+  let tvSetupOpen = false;
   let share = WATCH ? null : (() => {
     try {
       const v = JSON.parse(localStorage.getItem(SHARE_KEY));
@@ -681,6 +691,7 @@
       return;
     }
     document.body.classList.toggle('tv', tvOn());
+    document.body.classList.toggle('tv-display', WATCH_TV);
     document.body.classList.toggle('win', S.phase === 'finished');
     const justWon = S.phase === 'finished' && lastPhase === 'playing';
     if (S.phase !== 'finished') view = 'main';
@@ -690,6 +701,7 @@
     else if (view === 'recap') renderRecap();
     else renderWinner();
 
+    if (tvNeedsSoundClick()) app.insertAdjacentHTML('beforeend', '<button class="sound-banner" data-do="enableSound">🔊 Click to turn on sound for the room</button>');
     if (S.phase !== 'playing') flash.classList.remove('show');
     if (justWon) confetti();
     lastPhase = S.phase;
@@ -835,9 +847,11 @@
           <div class="brand-sm">${LOGO}<span>Killer</span></div>
           <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out</div>
           ${tvOn()
-            ? '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
+            ? WATCH_TV
+              ? `<div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div>`
+              : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : WATCH
-              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}`
+              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}`
               : `<button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>`}
         </header>
 
@@ -878,7 +892,7 @@
           </section>
         </div>
 
-        ${tvOn() ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -1130,7 +1144,19 @@
   }
 
   const onOff = (on) => `<span class="state ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>`;
-  const shareLink = () => share && `${location.origin}${location.pathname}?watch=${share.code}`;
+  const watchLink = (code, tv) => `${location.origin}${location.pathname}?watch=${code}${tv ? '&tv' : ''}`;
+  const shareLink = () => share && watchLink(share.code, false);
+
+  // QR code as an inline SVG (black on white, so any camera can read it).
+  function qrSvg(text) {
+    if (!window.qrcode) return '';
+    try {
+      const q = window.qrcode(0, 'M');
+      q.addData(text);
+      q.make();
+      return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    } catch (_) { return ''; }
+  }
 
   function renderSheet() {
     if (!sheetMode) return closeSheet();
@@ -1148,15 +1174,32 @@
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
           ${share ? `
+            <div class="share-qr">${qrSvg(shareLink())}</div>
             <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
             <p class="share-status ${shareStatus}">${status}</p>
-            <div class="share-link">
-              <input type="text" readonly value="${esc(shareLink())}" aria-label="Watch link">
-              <button class="btn btn-brass" data-sheet="copyLink">Copy</button>
+            <div class="share-actions">
+              <button class="btn btn-brass" data-sheet="copyLink">Copy link</button>
+              ${navigator.share ? '<button class="btn btn-ghost" data-sheet="sendLink">📤 Send…</button>' : ''}
             </div>
-            ${navigator.share ? '<button class="sheet-btn primary" data-sheet="sendLink">📤 Send the link…</button>' : ''}
-            <p class="sheet-note">Anyone with the link can watch on their phone, or on a TV. They can’t change anything.</p>
-            <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The link stops working</small></button>`
+            <p class="sheet-note">Everyone scans this to watch on their phone. It’s view-only and always silent.</p>
+
+            <button class="tv-setup-toggle${tvSetupOpen ? ' open' : ''}" data-sheet="tvSetup" aria-expanded="${tvSetupOpen}">📺 Set up a TV screen <span aria-hidden="true">⌄</span></button>
+            ${tvSetupOpen ? `
+              <div class="tv-setup">
+                <div class="share-qr small">${qrSvg(watchLink(share.code, true))}</div>
+                <p class="sheet-note">Scan this with the device for the TV: a laptop, a tablet, or a phone turned sideways. It shows the big-screen board, with its own QR code so people can join.</p>
+                <div class="share-actions"><button class="btn btn-ghost" data-sheet="copyTvLink">Copy TV link</button></div>
+                <div class="cs-row">
+                  <span>Room sound plays on</span>
+                  <div class="seg seg-sm" role="radiogroup" aria-label="Room sound plays on">
+                    <button role="radio" class="${roomSound === 'phone' ? 'on' : ''}" aria-checked="${roomSound === 'phone'}" data-sheet="roomPhone">This phone</button>
+                    <button role="radio" class="${roomSound === 'tv' ? 'on' : ''}" aria-checked="${roomSound === 'tv'}" data-sheet="roomTv">TV screen</button>
+                  </div>
+                </div>
+                ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
+              </div>` : ''}
+
+            <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>`
           : `
             <p class="sheet-note">Show this game live on everyone’s phones, or on a TV. Viewers get a link and can’t change anything.</p>
             <button class="sheet-btn primary" data-sheet="startShare">📡 Start sharing</button>`}
@@ -1223,7 +1266,7 @@
           <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
-          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>Arcade effects for extra lives, knockouts and the winner</small></button>
+          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && roomSound === 'tv' && soundOn ? 'Playing on the TV screen (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -1254,7 +1297,15 @@
       case 'share': openSheet({ type: 'share' }); break;
       case 'startShare': startSharing(); break;
       case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
-      case 'copyLink': copyLink(); break;
+      case 'copyLink': copyLink(shareLink()); break;
+      case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
+      case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
+      case 'roomPhone': case 'roomTv':
+        roomSound = b.dataset.sheet === 'roomTv' ? 'tv' : 'phone';
+        try { localStorage.setItem(ROOM_KEY, roomSound); } catch (_) { /* ignore */ }
+        queuePublish();
+        renderSheet();
+        break;
       case 'sendLink': navigator.share({ title: 'Killer: live game', url: shareLink() }).catch(() => {}); break;
       case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); restartClock(); renderSheet(); break;
@@ -1274,11 +1325,21 @@
   function setSound(on) {
     soundOn = on;
     try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (_) { /* ignore */ }
+    queuePublish();
   }
+
+  // Only one device plays room sound. Viewers' phones never do; the TV display does only
+  // when the operator sends sound there (and someone has clicked to allow it).
+  function soundHere() {
+    if (WATCH) return WATCH_TV && tvSoundEnabled && remoteSound.on && remoteSound.target === 'tv';
+    return soundOn && !(share && roomSound === 'tv');
+  }
+  const tvNeedsSoundClick = () => WATCH_TV && remoteSound.on && remoteSound.target === 'tv'
+    && !(tvSoundEnabled && actx && actx.state === 'running');
 
   // Browsers only allow audio after a tap, which every sound here follows.
   function audio() {
-    if (!soundOn) return null;
+    if (!soundHere()) return null;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     if (actx && (actx.state === 'closed' || actx.state === 'interrupted')) {
@@ -1301,7 +1362,7 @@
   // not a touch-down. Wake it on those, with a silent blip that fully unlocks it. This also
   // readies the audio for sounds fired by a timer (shot clock ticks and buzzer).
   function unlockAudio() {
-    if (!soundOn) return;
+    if (!soundHere()) return;
     const ac = audio();
     if (!ac || ac.unlocked) return;
     try {
@@ -1584,7 +1645,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound'];
 
   app.addEventListener('click', (e) => {
     const t = e.target.closest('button');
@@ -1618,6 +1679,7 @@
       case 'start': startGame(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
+      case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       // Tapping the clock resumes it when paused; otherwise it opens the clock panel.
       case 'clock':
         if (clk && clk.pausedAt) resumeClock(); else pauseClock();
@@ -1753,6 +1815,7 @@
   // Watchers see the game, not this device's view settings or the setup list.
   function publicState() {
     const { tv, roster, ...rest } = S;
+    rest.room = { sound: soundOn, target: roomSound };
     const off = serverOffset();
     rest.clock = {
       on: clockPrefs.on,
@@ -1832,8 +1895,7 @@
     toast('Stopped sharing');
   }
 
-  function copyLink() {
-    const link = shareLink();
+  function copyLink(link) {
     const done = () => toast('Link copied');
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, () => selectLink());
     else selectLink();
@@ -1856,13 +1918,15 @@
       const out = byId(knockedOut.p);
       showResult(knockedOut.p, 'out', 1900);
       if (out) flashOut(out.name);
+      if (S.phase === 'playing') sfx.out();
     } else if (lastShot.a === 'miss') {
       showResult(p.id, 'miss', 950);
     } else if (lastShot.a === 'extra' && lastShot.late) {
       showResult(p.id, 'extra', 1500, (S.last && S.last.bonus) || 1);
+      sfx.extra();
     } else if (lastShot.a === 'made') {
       const extras = added.filter((e) => e.a === 'extra' && !e.late && e.p === p.id).length;
-      if (extras) showResult(p.id, 'extra', 1500, extras);
+      if (extras) { showResult(p.id, 'extra', 1500, extras); sfx.extra(); }
       else showResult(p.id, 'safe', 750);
     }
   }
@@ -1870,9 +1934,10 @@
   function applyRemote(state) {
     const wasLive = remote.status === 'live';
     const prevLog = S.log || [];
-    const { clock, ...game } = state;
+    const { clock, room, ...game } = state;
     S = { ...freshState(), ...game, tv: S.tv };
     applyRemoteClock(clock);
+    remoteSound = room ? { on: !!room.sound, target: room.target === 'tv' ? 'tv' : 'phone' } : { on: false, target: 'phone' };
     remote.status = 'live';
     if (!Array.isArray(S.log)) S.log = [];
     if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
@@ -1899,6 +1964,8 @@
     if (WATCH && remote.status === 'connecting') { remote.status = 'unreachable'; render(); }
     if (share) setShareStatus('offline');
   }, 10000);
+
+  window.matchMedia('(orientation: landscape)').addEventListener('change', () => render());
 
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && S.tv && S.phase === 'playing') { S.tv = false; save(); render(); }

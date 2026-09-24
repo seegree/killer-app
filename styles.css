@@ -1105,3 +1105,75 @@ body.watch .pc:active { transform: none; }
   body.watch .brand-sm span { display: none; }
   body.watch .topbar .btn-sm[data-do="tv"] { display: none; }
 }
+
+/* Share panel: QR codes and TV setup */
+.share-qr { width: min(220px, 62vw); margin: 2px auto 10px; padding: 8px; border-radius: 16px; background: #fff; line-height: 0; }
+.share-qr svg { width: 100%; height: auto; display: block; }
+.share-qr.small { width: min(170px, 50vw); }
+.share-qr:empty { display: none; }
+.share-actions { display: flex; justify-content: center; gap: 8px; }
+.share-actions .btn { min-height: 44px; }
+.tv-setup-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 14px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+}
+.tv-setup-toggle span { transition: transform 0.2s ease; }
+.tv-setup-toggle.open span { transform: rotate(180deg); }
+.tv-setup { margin-top: 10px; padding: 14px 12px 6px; border-radius: 14px; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); }
+.tv-setup .sheet-note { margin-top: 0; text-align: center; }
+.tv-setup .cs-row { flex-wrap: wrap; }
+.seg.seg-sm { width: auto; margin: 0; }
+.seg.seg-sm button { min-height: 36px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+
+/* TV display: join QR in the top bar */
+.tv-join { display: flex; align-items: center; gap: 10px; }
+.tv-join svg { width: clamp(64px, 6vw, 110px); height: auto; padding: 5px; border-radius: 10px; background: #fff; display: block; }
+.tv-join span { display: flex; flex-direction: column; font-size: 13px; font-weight: 700; color: var(--chalk-dim); text-align: right; order: -1; }
+.tv-join b { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 2vw, 36px); letter-spacing: 0.12em; color: var(--gold); line-height: 1; padding-top: 4px; }
+
+/* TV display: one click allows room sound */
+.sound-banner {
+  position: fixed;
+  z-index: 70;
+  left: 50%;
+  bottom: calc(var(--safe-b) + 16px);
+  transform: translateX(-50%);
+  padding: 14px 22px;
+  border-radius: 999px;
+  border: none;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.8);
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+/* A phone or small tablet turned sideways as the TV display: board beside the list */
+@media (orientation: landscape) and (max-height: 600px) {
+  body.tv .topbar { padding-top: calc(var(--safe-t) + 4px); padding-bottom: 4px; }
+  body.tv .stage { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; gap: 12px; }
+  body.tv .left { position: sticky; top: 8px; }
+  body.tv .now-felt { padding: 8px 14px 12px; }
+  body.tv .now-name { font-size: calc(clamp(44px, 17cqi, 130px) * var(--fit, 1)); }
+  body.tv .now-status { font-size: clamp(26px, 4vw, 44px); }
+  body.tv .now-next { font-size: clamp(22px, 3.2vw, 40px); }
+  body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+  body.tv .pc { min-height: 42px; padding: 4px 6px 4px 10px; }
+  body.tv .pc-name { font-size: calc(21px * var(--nfit, 1)); }
+  body.tv .pc .chalk { width: 26px; height: 26px; }
+  .tv-join svg { width: 52px; }
+  .tv-join span { font-size: 11px; }
+  .tv-join b { font-size: 20px; }
+}
+

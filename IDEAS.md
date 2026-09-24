@@ -22,7 +22,14 @@ A read-only live copy of the current game that anyone can open, on their own pho
 - **Viewers:** a read-only board with the chalkboard (now shooting / next / then), the list in turn order, "left · out", the last action and the shot clock. No controls. At the end they see the winner and the Recap awards.
 - **TV:** open the watch link on the laptop in TV mode. It's a pure display, and the scorekeeper runs the game from their phone, so no keyboard is needed.
 - **Relay:** Firebase Realtime Database (free tier, up to 100 viewers at once). The app stays on GitHub Pages; only game updates go through Firebase. Only the phone that started sharing can write to a game; old games are cleaned up.
-- **Stages:** (1) relay setup, sending updates, a bare watch page; (2) full watch board and TV display; (3) QR code and Share screen; (4) optional "follow me" alerts when you're next (a sound and screen flash; vibration on Android only).
+- **Roles:** operator (runs the game), viewers (the everyone link: view-only and always silent), and the TV display (a separate `&tv` link, on a laptop, tablet or sideways phone, with the only room sound when the operator chooses "Room sound plays on: TV screen").
+- **Done on the branch:** sharing and the watch page; the shot clock synced to server time; the TV link with big-screen and sideways-phone layouts; room sound routing; QR codes on the Share screen and a join QR on the TV.
+- **Still to do:** optional "follow me" alerts when you're next (a sound and screen flash; vibration on Android only).
+
+## Operator's phone in landscape (parked)
+*Noted September 2026.*
+
+The operator's view is designed for a phone held upright. Turned sideways it works, but it scrolls a lot. A landscape layout could put the chalkboard on the left and the buttons on the right. (A display phone turned sideways already has its own layout via the TV link.)
 
 ## Buzz players' phones when it's their turn (parked)
 *Requested at the first live game.*
