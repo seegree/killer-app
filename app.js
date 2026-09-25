@@ -836,15 +836,16 @@
       : `<div class="empty">
           <div class="empty-rack" aria-hidden="true">${[1, 2, 3].map((n) => `<span>${'<i></i>'.repeat(n)}</span>`).join('')}</div>
           <p>No players yet. Add names above.</p>
-          ${saved.length ? `<button class="btn btn-brass" data-do="lastRoster">Use last roster · ${saved.length} players</button>` : ''}
         </div>`;
+    // The quickest way into a regular night: straight under the name box while the list is empty
+    const lastRoster = !r.length && saved.length
+      ? `<button class="btn btn-brass last-roster" data-do="lastRoster">Use last roster · ${saved.length} players</button>` : '';
 
     app.innerHTML = `
       <section class="setup">
         <header class="hero">
           <h1 class="wordmark"><img src="wordmark.svg" alt="Killer"></h1>
-          <p class="tagline">${START_LIVES} lives each · last one standing wins</p>
-          <button class="watch-entry" data-do="watchEntry">👀 Watch a game</button>
+          <button class="watch-entry" data-do="watchEntry"><span aria-hidden="true">👀</span>Watch a game</button>
         </header>
 
         <form class="add" id="addForm" autocomplete="off">
@@ -853,11 +854,12 @@
           <button class="btn btn-brass" type="submit">Add</button>
         </form>
         <p class="hint${setupNotice ? ' notice' : ''}" aria-live="polite">${setupNotice || 'Tip: paste a whole list — one per line, or separated by commas.'}</p>
+        ${lastRoster}
 
         <div class="roster-head">
           <h2>Players <span class="count">${r.length}</span></h2>
           <div class="roster-tools">
-            <button class="btn btn-ghost" data-do="shuffle" ${r.length < 2 ? 'disabled' : ''}>🎲 Shuffle</button>
+            <button class="btn btn-ghost" data-do="shuffle" ${r.length < 2 ? 'disabled' : ''}><span aria-hidden="true">🎲</span>Shuffle</button>
             <button class="btn btn-ghost" data-do="clear" ${r.length ? '' : 'disabled'}>Clear</button>
           </div>
         </div>
@@ -1041,7 +1043,7 @@
               <button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button>
               <button class="btn btn-ghost" data-do="newgame">New game</button>
             </div>
-            <button class="watch-entry" data-do="watchEntry">👀 Watch a game</button>`}
+            <button class="watch-entry" data-do="watchEntry"><span aria-hidden="true">👀</span>Watch a game</button>`}
           </div>
         </div>
       </section>`;
