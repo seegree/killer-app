@@ -1239,6 +1239,21 @@ body.watch .pc:active { transform: none; }
 .seg.seg-sm { width: auto; margin: 0; }
 .seg.seg-sm button { min-height: 40px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
 
+/* TV display, room sound on Both: a quiet readout of how early each synced sound arrived */
+.sync-readout {
+  position: fixed;
+  z-index: 30;
+  left: calc(env(safe-area-inset-left, 0px) + 10px);
+  bottom: calc(var(--safe-b) + 6px);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk-dim);
+  pointer-events: none;
+}
+
 /* TV display: join QR in the top bar */
 .tv-join { display: flex; align-items: center; gap: 10px; }
 .tv-join svg { width: clamp(64px, 6vw, 110px); height: auto; padding: 5px; border-radius: 10px; background: #fff; display: block; }

@@ -501,7 +501,7 @@
     if (S.phase !== 'playing') clearResult(false);
     if (wentOut) {
       buzz([60, 40, 140]);
-      if (S.phase === 'playing') { flashOut(p.name); sfx.out(); }
+      if (S.phase === 'playing') { flashOut(p.name); roomSfx('out'); }
     } else {
       buzz(40);
     }
@@ -542,7 +542,7 @@
         S.log.push({ p: p.id, a: 'extra', l: p.lives, late: true }); // belongs to the shot just scored
       });
       buzz(20);
-      sfx.extra();
+      roomSfx('extra');
       return;
     }
     const p = current();
@@ -559,7 +559,7 @@
       advance();
     });
     buzz(20);
-    sfx.extra();
+    roomSfx('extra');
     backToTop();
   }
 
@@ -803,13 +803,14 @@
     document.body.classList.toggle('win', S.phase === 'finished');
     const justWon = S.phase === 'finished' && lastPhase === 'playing';
     if (S.phase !== 'finished') view = 'main';
-    if (justWon) sfx.win();
+    if (justWon) { if (!WATCH) roomSfx('win'); else if (!tvSynced()) sfx.win(); }
     if (S.phase === 'setup') renderSetup();
     else if (S.phase === 'playing') renderGame();
     else if (view === 'recap') renderRecap();
     else renderWinner();
 
     if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
+    if (WATCH_TV) app.insertAdjacentHTML('beforeend', syncReadout());
     if (tvNeedsSoundClick()) app.insertAdjacentHTML('beforeend', '<button class="sound-banner" data-do="enableSound">🔊 Click to turn on sound for the room</button>');
     if (S.phase !== 'playing') flash.classList.remove('show');
     if (justWon) confetti();
@@ -1466,7 +1467,16 @@
                   </div>
                 </div>
                 ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
-                ${roomSound === 'both' ? '<p class="sheet-note">Plays on this phone and the TV screen. Click the TV screen once to allow sound there.</p>' : ''}
+                ${roomSound === 'both' ? `
+                  <div class="cs-row">
+                    <span>Sync delay</span>
+                    <div class="cs-stepper">
+                      <button data-sheet="leadLess" aria-label="Shorter delay" ${syncLead <= LEAD_MIN ? 'disabled' : ''}>−</button>
+                      <b>${(syncLead / 1000).toFixed(1)} s</b>
+                      <button data-sheet="leadMore" aria-label="Longer delay" ${syncLead >= LEAD_MAX ? 'disabled' : ''}>+</button>
+                    </div>
+                  </div>
+                  <p class="sheet-note">Plays on this phone and the TV screen together, this long after each tap, so both play at once. Click the TV screen once to allow sound there.</p>` : ''}
               </div>` : ''}
 
             <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>
@@ -1587,6 +1597,10 @@
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
+      case 'leadLess': case 'leadMore':
+        setSyncLead(syncLead + (b.dataset.sheet === 'leadMore' ? LEAD_STEP : -LEAD_STEP));
+        renderSheet();
+        break;
       case 'roomPhone': case 'roomTv': case 'roomBoth':
         roomSound = { roomPhone: 'phone', roomTv: 'tv', roomBoth: 'both' }[b.dataset.sheet];
         try { localStorage.setItem(ROOM_KEY, roomSound); } catch (_) { /* ignore */ }
@@ -1613,6 +1627,60 @@
     soundOn = on;
     try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (_) { /* ignore */ }
     queuePublish();
+  }
+
+  // ---------------------------------------------------------------- synced room sound
+  // With room sound on "Both", the phone and the TV play each event sound together: the phone
+  // stamps it with the shared server time plus a short delay, and every device plays it at that
+  // moment. A device that hears about it too late skips it rather than playing out of step.
+  // (Shot clock ticks and the buzzer already line up: every device works them out from the shared clock.)
+  const LEAD_KEY = 'killer.lead.v1';
+  const LEAD_MIN = 100;
+  const LEAD_MAX = 1500;
+  const LEAD_STEP = 100;
+  const SYNC_GRACE_MS = 40; // this late still sounds together to the ear
+  let syncLead = (() => { try { const v = Number(localStorage.getItem(LEAD_KEY)); return v >= LEAD_MIN && v <= LEAD_MAX ? v : 500; } catch (_) { return 500; } })();
+  let sfxQueue = []; // operator: recent stamped sounds, { k: kind, at: server time to play }
+  const syncedSound = () => !WATCH && !!share && roomSound === 'both';
+  const tvSynced = () => WATCH_TV && remoteSound.target === 'both';
+
+  function setSyncLead(ms) {
+    syncLead = Math.min(LEAD_MAX, Math.max(LEAD_MIN, ms));
+    try { localStorage.setItem(LEAD_KEY, String(syncLead)); } catch (_) { /* ignore */ }
+  }
+
+  // Operator: an event sound (out, extra, win). Plays now, or when synced, at the stamped moment.
+  function roomSfx(kind) {
+    if (!syncedSound()) { sfx[kind](); return; }
+    const at = Date.now() + serverOffset() + syncLead;
+    sfxQueue = sfxQueue.filter((e) => e.at > at - 10000).slice(-4).concat({ k: kind, at });
+    queuePublish();
+    setTimeout(() => sfx[kind](), syncLead);
+  }
+
+  // TV display: play each new stamped sound on time. The readout keeps score for the sync test.
+  let lastSfxAt = null; // newest stamp already handled (null until the first update)
+  let syncStats = { played: 0, skipped: 0, last: null, closest: null };
+  function scheduleRemoteSfx(list) {
+    const newest = list.reduce((m, e) => Math.max(m, e.at || 0), 0);
+    if (lastSfxAt === null) { lastSfxAt = newest; return; } // joining: don't replay old sounds
+    const fresh = list.filter((e) => e.at > lastSfxAt && typeof sfx[e.k] === 'function').sort((a, b) => a.at - b.at);
+    lastSfxAt = Math.max(lastSfxAt, newest);
+    const off = serverOffset();
+    for (const e of fresh) {
+      const spare = Math.round(e.at - off - Date.now()); // how early it arrived, in ms
+      syncStats.last = spare;
+      syncStats.closest = syncStats.closest === null ? spare : Math.min(syncStats.closest, spare);
+      if (spare < -SYNC_GRACE_MS) { syncStats.skipped++; continue; }
+      syncStats.played++;
+      setTimeout(() => sfx[e.k](), Math.max(0, spare));
+    }
+  }
+  function syncReadout() {
+    if (!tvSynced()) return '';
+    const { played, skipped, last, closest } = syncStats;
+    const ms = (v) => (v === null ? '–' : v >= 0 ? `${v} ms early` : `${-v} ms late`);
+    return `<div class="sync-readout" aria-hidden="true">Sync test · ${played} played · ${skipped} skipped · last ${ms(last)} · closest ${ms(closest)}</div>`;
   }
 
   // Room sound plays on the operator's phone, the TV display, or both. Viewers' phones never
@@ -2138,6 +2206,7 @@
   function publicState() {
     const { tv, roster, ...rest } = S;
     rest.room = { sound: soundOn, target: roomSound };
+    rest.sfx = syncedSound() ? sfxQueue : [];
     const off = serverOffset();
     rest.clock = {
       on: clockPrefs.on,
@@ -2240,15 +2309,15 @@
       const out = byId(knockedOut.p);
       showResult(knockedOut.p, 'out', 1900);
       if (out) flashOut(out.name);
-      if (S.phase === 'playing') sfx.out();
+      if (S.phase === 'playing' && !tvSynced()) sfx.out();
     } else if (lastShot.a === 'miss') {
       showResult(p.id, 'miss', 950);
     } else if (lastShot.a === 'extra' && lastShot.late) {
       showResult(p.id, 'extra', 1500, (S.last && S.last.bonus) || 1);
-      sfx.extra();
+      if (!tvSynced()) sfx.extra();
     } else if (lastShot.a === 'made') {
       const extras = added.filter((e) => e.a === 'extra' && !e.late && e.p === p.id).length;
-      if (extras) { showResult(p.id, 'extra', 1500, extras); sfx.extra(); }
+      if (extras) { showResult(p.id, 'extra', 1500, extras); if (!tvSynced()) sfx.extra(); }
       else showResult(p.id, 'safe', 750);
     }
   }
@@ -2256,10 +2325,11 @@
   function applyRemote(state) {
     const wasLive = remote.status === 'live';
     const prevLog = S.log || [];
-    const { clock, room, ...game } = state;
+    const { clock, room, sfx: stamped, ...game } = state;
     S = { ...freshState(), ...game, tv: S.tv };
     applyRemoteClock(clock);
     remoteSound = room ? { on: !!room.sound, target: roomTarget(room.target) } : { on: false, target: 'phone' };
+    if (WATCH_TV) scheduleRemoteSfx(Array.isArray(stamped) ? stamped : []);
     remote.status = 'live';
     if (!Array.isArray(S.log)) S.log = [];
     if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
