@@ -5,6 +5,13 @@
   'use strict';
 
   const START_LIVES = 3;
+  // Game length: lives each player starts with. Marks always count down from 3, so a shorter game
+  // simply starts everyone part-way (Blitz with a /, Sudden death with an X).
+  const MODES = { 3: 'Classic', 2: 'Blitz', 1: 'Sudden death' };
+  const MODE_ICON = { 2: '⚡', 1: '💀' };
+  // The choice is a hidden extra, off until unlocked on this phone (see modeTap).
+  const MODES_KEY = 'killer.modes.v1';
+  let modesUnlocked = (() => { try { return localStorage.getItem(MODES_KEY) === 'on'; } catch (_) { return false; } })();
   const GAME_KEY = 'killer.game.v1';
   const ROSTER_KEY = 'killer.roster.v1';
   const HISTORY_CAP = 400;
@@ -110,7 +117,7 @@
   let recapTab = 'awards';
 
   function freshState() {
-    return { phase: 'setup', roster: [], players: [], current: 0, turnBonus: 0, outOrder: [], last: null, winner: null, log: [], tv: false };
+    return { phase: 'setup', roster: [], players: [], current: 0, turnBonus: 0, outOrder: [], last: null, winner: null, log: [], tv: false, startLives: START_LIVES };
   }
 
   function load() {
@@ -178,9 +185,11 @@
   const current = () => S.players[S.current];
   const byId = (id) => S.players.find((p) => p.id === id);
 
-  function newPlayer(name) {
-    return { id: uid(), name, lives: START_LIVES, shots: 0, pots: 0, misses: 0, extras: 0 };
+  function newPlayer(name, lives = START_LIVES) {
+    return { id: uid(), name, lives, shots: 0, pots: 0, misses: 0, extras: 0 };
   }
+  // Lives for the game about to start (Classic unless a shorter game is unlocked and chosen)
+  const gameLives = () => (modesUnlocked && MODES[S.startLives] ? S.startLives : START_LIVES);
 
   function nextAliveIndex(from) {
     const n = S.players.length;
@@ -590,7 +599,8 @@
     history = [];
     prevLives.clear();
     prevCurrentId = null;
-    S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', players: names.map(newPlayer) };
+    const lives = gameLives(); // Rematch keeps the game length; New game goes back to Classic
+    S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', startLives: lives, players: names.map((n) => newPlayer(n, lives)) };
     S.log.push({ p: S.players[0].id, a: 'rack' }); // the first shooter breaks
     clk = null;
     save();
@@ -613,7 +623,7 @@
     const { fresh, dupes } = splitDupes(names, S.players.map((p) => p.name));
     if (fresh.length) {
       commit(() => {
-        fresh.forEach((n) => S.players.push(newPlayer(n)));
+        fresh.forEach((n) => S.players.push(newPlayer(n, S.startLives || START_LIVES)));
         S.last = { type: 'add', name: fresh.join(', ') };
       });
     }
@@ -885,6 +895,10 @@
         ${list}
 
         <div class="setup-foot">
+          ${modesUnlocked ? `
+          <div class="seg seg-sm mode-seg" role="radiogroup" aria-label="Game length">
+            ${[3, 2, 1].map((n) => `<button role="radio" class="${gameLives() === n ? 'on' : ''}" aria-checked="${gameLives() === n}" data-do="mode" data-n="${n}">${MODE_ICON[n] ? `<span aria-hidden="true">${MODE_ICON[n]}</span>` : ''}${MODES[n]}</button>`).join('')}
+          </div>` : ''}
           <div class="clock-setting">
             <button class="switch${clockPrefs.on ? ' on' : ''}" data-do="clockToggle" role="switch" aria-checked="${clockPrefs.on}" aria-label="Shot clock"><i></i></button>
             <span class="cs-label">⏱ Shot clock</span>
@@ -895,7 +909,7 @@
             </div>
           </div>
           <button class="btn btn-start" data-do="start" ${r.length < 2 ? 'disabled' : ''}>
-            ${r.length < 2 ? 'Add at least 2 players' : `Rack ’em · ${r.length} players`}
+            ${r.length < 2 ? 'Add at least 2 players' : `${MODE_ICON[gameLives()] ? `${MODE_ICON[gameLives()]} ` : ''}Rack ’em · ${r.length} players`}
           </button>
         </div>
       </section>`;
@@ -975,7 +989,7 @@
       <section class="game">
         <header class="topbar">
           <div class="brand-sm">${LOGO}<span>Killer</span></div>
-          <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out</div>
+          <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out${MODE_ICON[S.startLives] ? `<i aria-hidden="true">·</i><span class="mode-tag" title="${MODES[S.startLives]}: ${S.startLives} ${S.startLives === 1 ? 'life' : 'lives'} each">${MODE_ICON[S.startLives]}</span>` : ''}</div>
           ${tvOn()
             ? WATCH_TV
               ? `<div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div>`
@@ -1673,6 +1687,21 @@
   const partyOn = () => WATCH && !WATCH_TV && remoteSound.on && remoteSound.target === 'everyone';
   const partyNeedsJoin = () => partyOn() && !partyJoined && !partyDeclined;
 
+  // Shows or hides the game length choice on the start screen.
+  let modeTaps = [];
+  function modeTap() {
+    const now = Date.now();
+    modeTaps = modeTaps.filter((t) => now - t < 3000).concat(now);
+    if (modeTaps.length < 7) return;
+    modeTaps = [];
+    modesUnlocked = !modesUnlocked;
+    try { localStorage.setItem(MODES_KEY, modesUnlocked ? 'on' : 'off'); } catch (_) { /* ignore */ }
+    if (!modesUnlocked) S.startLives = START_LIVES;
+    save();
+    render();
+    toast(modesUnlocked ? '⚡ Blitz unlocked' : 'Blitz hidden');
+  }
+
   // Shows or hides the party mode option.
   let partyTaps = [];
   function partyTap() {
@@ -2079,6 +2108,7 @@
   const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty'];
 
   app.addEventListener('click', (e) => {
+    if (!WATCH && e.target.closest('.setup .wordmark')) { modeTap(); return; }
     const t = e.target.closest('button');
     if (!t || t.disabled) return;
     if (WATCH && !WATCH_ALLOWED.includes(t.dataset.do)) return;
@@ -2108,6 +2138,7 @@
         render();
         break;
       case 'start': startGame(); break;
+      case 'mode': S.startLives = Number(t.dataset.n); save(); render(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
       case 'rerackTop': rerack(); toast(`🎱 Re-rack · ${current() ? current().name : ''} breaks`); break;

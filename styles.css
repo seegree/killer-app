@@ -290,12 +290,16 @@ kbd {
   bottom: 0;
   margin-top: auto;
   padding: 14px 0 calc(var(--safe-b) + 14px);
-  background: linear-gradient(transparent, var(--bg-0) 30%);
+  background: linear-gradient(transparent, var(--bg-0) 14px);
 }
 /* A slim shot clock row: it's set once, just before racking */
 .setup-foot .clock-setting { margin-bottom: 10px; padding: 4px 6px 4px 10px; }
 .setup-foot .cs-stepper button { width: 34px; height: 34px; border-radius: 10px; font-size: 18px; }
 .setup-foot .cs-stepper b { font-size: 21px; }
+/* Game length (once unlocked): one slim row above the shot clock */
+.setup-foot .mode-seg { width: 100%; margin: 0 0 8px; }
+.setup-foot .mode-seg button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; padding: 0 8px; font-size: 14px; }
+.mode-tag { font-size: 15px; line-height: 1; }
 
 /* ------------------------------------------------------------------ game layout (mobile first) */
 .game { min-height: 100dvh; display: flex; flex-direction: column; }
