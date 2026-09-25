@@ -457,7 +457,7 @@ kbd {
     margin-bottom: calc((var(--slot) - var(--below) - var(--b)) / 2);
   }
   .now-felt .clock-actions button { min-height: var(--b); }
-  body.tv .now-felt .clock-actions { --slot: calc(0.2em + 1.2em); --b: 64px; --below: 30px; font-size: clamp(40px, 4.8vw, 100px); }
+  body.tv .now-felt .clock-actions { --slot: calc(0.2em + 1.2em); --b: 64px; --below: 30px; font-size: clamp(34px, min(4.8vw, 5.5vh), 100px); }
 }
 @media (min-width: 960px) and (min-height: 601px) {
   body:not(.tv) .now-felt .clock-actions { font-size: 32px; }
@@ -765,11 +765,12 @@ body.tv .controls { display: none; }
 body.tv .stage { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 body.tv .left { display: block; position: static; }
 body.tv .now-felt { padding: 12px 28px 14px; }
-body.tv .now-name { font-size: calc(clamp(72px, 20cqi, 230px) * var(--fit, 1)); }
+/* Sized by height as well as width, so a full roster fits below the chalkboard */
+body.tv .now-name { font-size: calc(clamp(64px, min(20cqi, 15vh), 230px) * var(--fit, 1)); }
 body.tv .now-label { font-size: clamp(12px, 1.1vw, 18px); }
-body.tv .now-status { font-size: clamp(44px, 4.4vw, 90px); }
+body.tv .now-status { font-size: clamp(36px, min(4.4vw, 5.5vh), 90px); }
 /* On the TV, who's next matters almost as much as who's up: big names, gold labels. */
-body.tv .now-next { font-size: clamp(40px, 4.8vw, 100px); margin-top: 0.2em; gap: 0.2em 0.9em; }
+body.tv .now-next { font-size: clamp(34px, min(4.8vw, 5.5vh), 100px); margin-top: 0.2em; gap: 0.2em 0.9em; }
 body.tv .nx-label { font-size: 0.34em; }
 body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 12.5vw, 260px), 1fr)); }
 body.tv .board-grid { gap: 10px; }
@@ -788,6 +789,11 @@ body.tv .pill b { font-size: 20px; }
   color: var(--chalk-faint);
 }
 @media (hover: none) { .tv-keys { display: none; } }
+/* The TV is exactly one screen: the chalkboard and key hints stay put, and if a big roster
+   doesn't fit, only the player list scrolls */
+body.tv .game { height: 100dvh; min-height: 0; overflow: hidden; }
+body.tv .stage { min-height: 0; }
+body.tv .board { flex: 1; min-height: 0; overflow-y: auto; padding-top: 8px; margin-top: -8px; }
 
 /* ------------------------------------------------------------------ winner */
 /* The poster has its own ink background, so the page goes flat ink to match. */
@@ -1256,7 +1262,7 @@ body.watch .pc:active { transform: none; }
 
 /* TV display: join QR in the top bar */
 .tv-join { display: flex; align-items: center; gap: 10px; }
-.tv-join svg { width: clamp(64px, 6vw, 110px); height: auto; padding: 5px; border-radius: 10px; background: #fff; display: block; }
+.tv-join svg { width: clamp(56px, 4.2vw, 80px); height: auto; padding: 5px; border-radius: 10px; background: #fff; display: block; }
 .tv-join span { display: flex; flex-direction: column; font-size: 13px; font-weight: 700; color: var(--chalk-dim); text-align: right; order: -1; }
 .tv-join b { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 2vw, 36px); letter-spacing: 0.12em; color: var(--gold); line-height: 1; padding-top: 4px; }
 
@@ -1352,7 +1358,7 @@ body.watch .pc:active { transform: none; }
 .watch-form input:focus { outline: none; border-color: var(--brass); }
 .watch-form .btn-start { width: auto; padding: 0 22px; font-size: 26px; }
 .watch-error { margin: 10px 2px 0; font-size: 14px; font-weight: 600; color: #ff8a8d; }
-.link-btn { display: block; margin: 18px auto 0; border: none; background: none; font-size: 13px; color: var(--chalk-faint); text-decoration: underline; text-underline-offset: 3px; }
+.link-btn { display: block; margin: 8px auto 0; padding: 10px 14px; border: none; background: none; font-size: 13px; color: var(--chalk-faint); text-decoration: underline; text-underline-offset: 3px; }
 .link-btn:hover { color: var(--chalk-dim); }
 /* Watching: the ✕ is part of the LIVE pill, so it reads as "leave the live game" */
 .live-pill {
@@ -1365,6 +1371,7 @@ body.watch .pc:active { transform: none; }
 }
 .live-pill .live-badge { border: none; background: none; border-radius: 0; display: flex; align-items: center; }
 .live-pill button {
+  position: relative;
   display: grid;
   place-items: center;
   min-width: 40px;
@@ -1377,6 +1384,7 @@ body.watch .pc:active { transform: none; }
   color: #ff8a8d;
 }
 .live-pill button:hover { background: rgba(229, 72, 77, 0.2); }
+.live-pill button::after { content: ''; position: absolute; inset: -8px -6px; } /* a thumb-sized target around the small ✕ */
 
 /* ------------------------------------------------------------------ following yourself (viewers) */
 .pc.me { box-shadow: inset 0 0 0 2px rgba(245, 197, 66, 0.55); }
@@ -1413,7 +1421,8 @@ body.watch .pc:active { transform: none; }
 .deck-banner {
   position: fixed;
   z-index: 75;
-  top: calc(var(--safe-t) + 8px);
+  /* Slim enough to cover only the top bar, never the chalkboard */
+  top: calc(var(--safe-t) + 6px);
   left: 10px;
   right: 10px;
   max-width: 520px;
@@ -1421,17 +1430,18 @@ body.watch .pc:active { transform: none; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 10px 14px 18px;
-  border-radius: 18px;
+  padding: 7px 7px 7px 16px;
+  border-radius: 16px;
   background: var(--gold);
   color: var(--ink);
-  font-size: 17px;
+  font-size: 15px;
+  line-height: 1.25;
   font-weight: 700;
   box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.8);
   animation: deckIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 .deck-banner span { flex: 1; }
-.deck-banner button { flex: none; width: 40px; height: 40px; border: none; border-radius: 12px; background: rgba(0, 0, 0, 0.12); font-size: 16px; color: var(--ink); }
+.deck-banner button { flex: none; width: 38px; height: 38px; border: none; border-radius: 12px; background: rgba(0, 0, 0, 0.12); font-size: 16px; color: var(--ink); }
 @keyframes deckIn { from { opacity: 0; transform: translateY(-120%); } }
 
 /* Your turn: full-screen takeover (tap to see the board) */
@@ -1573,7 +1583,7 @@ body.watch .pc:active { transform: none; }
     -webkit-backdrop-filter: none;
   }
   body:not(.tv) .lastline { min-height: 30px; margin-bottom: 4px; font-size: 14px; }
-  body:not(.tv) .undo { min-height: 32px; }
+  body:not(.tv) .undo { min-height: 40px; }
   body:not(.tv) .actions { gap: 8px; }
   body:not(.tv) .act { min-height: 58px; flex-direction: row; gap: 6px; border-radius: 14px; }
   body:not(.tv) .act-glyph { font-size: 20px; }
@@ -1599,7 +1609,7 @@ body.watch .pc:active { transform: none; }
   .podium li { padding: 3px 10px 3px 4px; }
   .podium .pname { font-size: 18px; }
   .win-actions { margin-top: 8px; gap: 6px; }
-  .win-actions .btn { min-height: 38px; font-size: 14px; }
+  .win-actions .btn { min-height: 40px; font-size: 14px; }
   .win-actions .btn-start { font-size: 20px; }
   .win-actions ~ .watch-entry { margin-top: 6px; padding: 5px 12px; font-size: 13px; }
 
@@ -1611,7 +1621,7 @@ body.watch .pc:active { transform: none; }
     column-gap: 4vw;
     align-items: center;
     justify-items: center;
-    padding: calc(var(--safe-t) + 14px) calc(env(safe-area-inset-right, 0px) + 24px) calc(var(--safe-b) + 28px) calc(env(safe-area-inset-left, 0px) + 24px);
+    padding: calc(var(--safe-t) + 14px) calc(env(safe-area-inset-right, 0px) + 24px) calc(var(--safe-b) + 40px) calc(env(safe-area-inset-left, 0px) + 24px);
   }
   .ut-name { grid-column: 1; grid-row: 2; font-size: calc(min(18cqi, 30vh) * var(--fit, 1)); }
   .ut-up { grid-column: 1; grid-row: 3; font-size: 13vh; }
@@ -1619,7 +1629,7 @@ body.watch .pc:active { transform: none; }
   .ut-clock { grid-column: 2; grid-row: 2 / 4; font-size: 44vh; margin: 0; }
   .ut-clock.idle, .ut-clock.paused { font-size: 9vh; }
   .ut-bar { grid-column: 2; grid-row: 4; width: 100%; height: 10px; }
-  .ut-hint { bottom: calc(var(--safe-b) + 8px); font-size: 12px; }
+  .ut-hint { bottom: calc(var(--safe-b) + 20px); font-size: 12px; }
 }
 
 /* Sideways phones: panels use the width instead of the height */
@@ -1645,6 +1655,9 @@ body.watch .pc:active { transform: none; }
   .menu-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
   .menu-body > .sheet-head, .menu-body > form, .menu-body > .keys, .menu-body > .sheet-note { grid-column: 1 / -1; }
   .menu-body .sheet-btn { margin-top: 8px; padding: 10px 14px; }
+  /* Titles line up across each row, whatever the subtitle length (buttons centre their content otherwise) */
+  .menu-body .sheet-btn { display: flex; flex-wrap: wrap; align-content: flex-start; align-items: center; column-gap: 0.35em; }
+  .menu-body .sheet-btn small { flex-basis: 100%; }
   .share-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: start; }
   .share-left { width: min(230px, 38vw); text-align: center; }
   .share-left .share-qr, .share-left .share-qr.mini { width: min(180px, 42vh); margin-top: 0; padding: 7px; }
