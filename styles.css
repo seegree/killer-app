@@ -1245,6 +1245,9 @@ body.watch .pc:active { transform: none; }
 .tv-setup .share-actions { margin-top: 10px; }
 .seg.seg-sm { width: auto; margin: 0; }
 .seg.seg-sm button { min-height: 40px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+/* Four room-sound choices (party mode unlocked): a 2 × 2 grid across the whole row */
+.seg.seg-sm:has(> :nth-child(4)) { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 100%; border-radius: 18px; }
+.seg.seg-sm:has(> :nth-child(4)) button { border-radius: 14px; }
 
 /* TV display, room sound on Both: a quiet readout of how early each synced sound arrived */
 .sync-readout {
@@ -1284,6 +1287,27 @@ body.watch .pc:active { transform: none; }
   box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.8);
   animation: livePulse 2s ease-in-out infinite;
 }
+
+/* Party mode, on a watcher's phone: a one-tap invitation, floating above the YOU strip */
+.party-banner {
+  position: fixed;
+  z-index: 70;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--safe-b) + 84px);
+  max-width: 460px;
+  margin: 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 20px;
+  background: var(--gold);
+  box-shadow: 0 16px 44px -10px rgba(0, 0, 0, 0.85);
+  animation: deckIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.party-banner button { border: none; border-radius: 14px; color: var(--ink); font-weight: 800; }
+.pb-join { flex: 1; min-height: 48px; padding: 0 12px; background: none; font-size: 16px; animation: livePulse 2s ease-in-out infinite; }
+.pb-no { flex: none; width: 48px; background: rgba(0, 0, 0, 0.12); font-size: 16px; }
 
 /* A phone or small tablet turned sideways as the TV display: exactly one screen, no page
    scrolling. The chalkboard sizes to the screen height; only the player list scrolls. */

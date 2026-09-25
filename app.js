@@ -38,10 +38,17 @@
   const SHARE_KEY = 'killer.share.v1';
   // Where room sound plays while sharing: the operator's phone, the TV display, or both.
   const ROOM_KEY = 'killer.room.v1';
-  const ROOM_TARGETS = ['phone', 'tv', 'both'];
+  const ROOM_TARGETS = ['phone', 'tv', 'both', 'everyone'];
   const roomTarget = (t) => (ROOM_TARGETS.includes(t) ? t : 'phone');
-  const tvGetsSound = (t) => t === 'tv' || t === 'both';
+  const tvGetsSound = (t) => t === 'tv' || t === 'both' || t === 'everyone';
+  // Party mode ("Everyone": every watching phone joins in) is a hidden extra: tap the Share live
+  // heading 7 times to show or hide it. This phone remembers.
+  const PARTY_KEY = 'killer.party.v1';
+  let partyUnlocked = (() => { try { return localStorage.getItem(PARTY_KEY) === 'on'; } catch (_) { return false; } })();
   let roomSound = (() => { try { return roomTarget(localStorage.getItem(ROOM_KEY)); } catch (_) { return 'phone'; } })();
+  if (roomSound === 'everyone' && !partyUnlocked) roomSound = 'both';
+  let partyJoined = false; // watcher: tapped to join the room sound in party mode
+  let partyDeclined = false; // watcher: said no thanks (asked again next visit)
   let remoteSound = { on: false, target: 'phone' }; // TV display: the operator's sound settings
   let tvSoundEnabled = false; // TV display: someone clicked to allow sound
   let tvSetupOpen = false;
@@ -803,7 +810,7 @@
     document.body.classList.toggle('win', S.phase === 'finished');
     const justWon = S.phase === 'finished' && lastPhase === 'playing';
     if (S.phase !== 'finished') view = 'main';
-    if (justWon) { if (!WATCH) roomSfx('win'); else if (!tvSynced()) sfx.win(); }
+    if (justWon) { if (!WATCH) roomSfx('win'); else if (!remoteSynced()) sfx.win(); }
     if (S.phase === 'setup') renderSetup();
     else if (S.phase === 'playing') renderGame();
     else if (view === 'recap') renderRecap();
@@ -811,6 +818,13 @@
 
     if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
     if (WATCH_TV) app.insertAdjacentHTML('beforeend', syncReadout());
+    if (partyNeedsJoin()) {
+      app.insertAdjacentHTML('beforeend', `
+        <div class="party-banner" role="alert">
+          <button class="pb-join" data-do="joinParty">🎉 Party mode! Tap to join the room sound</button>
+          <button class="pb-no" data-do="declineParty" aria-label="No thanks">✕</button>
+        </div>`);
+    }
     if (tvNeedsSoundClick()) app.insertAdjacentHTML('beforeend', '<button class="sound-banner" data-do="enableSound">🔊 Click to turn on sound for the room</button>');
     if (S.phase !== 'playing') flash.classList.remove('show');
     if (justWon) confetti();
@@ -1402,6 +1416,7 @@
             ${shown.map((n) => `<button class="who-name${me.codes[WATCH] && nameKey(n) === nameKey(me.codes[WATCH]) ? ' on' : ''}" data-sheet="pickMe" data-name="${esc(n)}">${esc(n)}</button>`).join('') || '<p class="sheet-note">No matching names.</p>'}
           </div>
           <button class="sheet-btn" data-sheet="toggleAlertSound">${me.sound ? '🔔 Alert sound' : '🔕 Alert sound'} ${onOff(me.sound)}<small>A ping when you’re on deck and when it’s your turn (only on this phone)</small></button>
+          ${partyOn() ? `<button class="sheet-btn" data-sheet="toggleParty">🎉 Room sound ${onOff(partyJoined)}<small>Party mode: play the room’s sounds on this phone, in time with everyone else</small></button>` : ''}
           <button class="link-btn" data-sheet="pickMe" data-name="">I’m just watching</button>
         </div>`;
       return;
@@ -1435,7 +1450,7 @@
       sheet.innerHTML = `
         <div class="sheet-body">
           <div class="sheet-head">
-            <h3 class="sheet-title">Share live</h3>
+            <h3 class="sheet-title share-title">Share live</h3>
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
           ${share ? `
@@ -1464,10 +1479,11 @@
                     <button role="radio" class="${roomSound === 'phone' ? 'on' : ''}" aria-checked="${roomSound === 'phone'}" data-sheet="roomPhone">This phone</button>
                     <button role="radio" class="${roomSound === 'tv' ? 'on' : ''}" aria-checked="${roomSound === 'tv'}" data-sheet="roomTv">TV screen</button>
                     <button role="radio" class="${roomSound === 'both' ? 'on' : ''}" aria-checked="${roomSound === 'both'}" data-sheet="roomBoth">Both</button>
+                    ${partyUnlocked ? `<button role="radio" class="${roomSound === 'everyone' ? 'on' : ''}" aria-checked="${roomSound === 'everyone'}" data-sheet="roomEveryone">Everyone 🎉</button>` : ''}
                   </div>
                 </div>
                 ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
-                ${roomSound === 'both' ? `
+                ${roomSound === 'both' || roomSound === 'everyone' ? `
                   <div class="cs-row">
                     <span>Sync delay</span>
                     <div class="cs-stepper">
@@ -1476,7 +1492,9 @@
                       <button data-sheet="leadMore" aria-label="Longer delay" ${syncLead >= LEAD_MAX ? 'disabled' : ''}>+</button>
                     </div>
                   </div>
-                  <p class="sheet-note">Plays on this phone and the TV screen together, this long after each tap, so both play at once. Click the TV screen once to allow sound there.</p>` : ''}
+                  <p class="sheet-note">${roomSound === 'everyone'
+                    ? 'Party mode: plays on this phone, the TV screen and every watching phone that joins in, all together, this long after each tap. Watchers get a “Join the room sound” button.'
+                    : 'Plays on this phone and the TV screen together, this long after each tap, so both play at once. Click the TV screen once to allow sound there.'}</p>` : ''}
               </div>` : ''}
 
             <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>
@@ -1549,7 +1567,7 @@
           <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
-          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && soundOn && roomSound !== 'phone' ? (roomSound === 'tv' ? 'Playing on the TV screen' : 'Playing here and on the TV screen') + ' (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
+          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && soundOn && roomSound !== 'phone' ? ({ tv: 'Playing on the TV screen', both: 'Playing here and on the TV screen', everyone: 'Party mode: playing on every device' })[roomSound] + ' (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -1573,6 +1591,7 @@
 
   sheet.addEventListener('click', (e) => {
     if (e.target === sheet) return closeSheet(); // backdrop
+    if (e.target.closest('.share-title')) { partyTap(); return; }
     const b = e.target.closest('button[data-sheet]');
     if (!b) return;
     const p = sheetMode && sheetMode.id ? byId(sheetMode.id) : null;
@@ -1593,6 +1612,12 @@
       case 'copyLink': copyLink(shareLink()); break;
       case 'pickMe': choosePlayer(b.dataset.name || ''); break;
       case 'someoneElse': sheetMode = { type: 'who' }; renderSheet(); break;
+      case 'toggleParty':
+        partyJoined = !partyJoined;
+        if (partyJoined) { partyDeclined = false; unlockAudio(); sfx.extra(); }
+        renderSheet();
+        render();
+        break;
       case 'toggleAlertSound': me.sound = !me.sound; saveMe(); renderSheet(); if (me.sound) { unlockAudio(); sfx.deck(); } break;
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
@@ -1601,8 +1626,8 @@
         setSyncLead(syncLead + (b.dataset.sheet === 'leadMore' ? LEAD_STEP : -LEAD_STEP));
         renderSheet();
         break;
-      case 'roomPhone': case 'roomTv': case 'roomBoth':
-        roomSound = { roomPhone: 'phone', roomTv: 'tv', roomBoth: 'both' }[b.dataset.sheet];
+      case 'roomPhone': case 'roomTv': case 'roomBoth': case 'roomEveryone':
+        roomSound = { roomPhone: 'phone', roomTv: 'tv', roomBoth: 'both', roomEveryone: 'everyone' }[b.dataset.sheet];
         try { localStorage.setItem(ROOM_KEY, roomSound); } catch (_) { /* ignore */ }
         queuePublish();
         renderSheet();
@@ -1641,8 +1666,31 @@
   const SYNC_GRACE_MS = 40; // this late still sounds together to the ear
   let syncLead = (() => { try { const v = Number(localStorage.getItem(LEAD_KEY)); return v >= LEAD_MIN && v <= LEAD_MAX ? v : 500; } catch (_) { return 500; } })();
   let sfxQueue = []; // operator: recent stamped sounds, { k: kind, at: server time to play, lead: the delay used }
-  const syncedSound = () => !WATCH && !!share && roomSound === 'both';
-  const tvSynced = () => WATCH_TV && remoteSound.target === 'both';
+  const syncedSound = () => !WATCH && !!share && (roomSound === 'both' || roomSound === 'everyone');
+  // Watching devices that play room sound in step with the phone: the TV on Both or Everyone,
+  // and (party mode) every watching phone that joined in.
+  const remoteSynced = () => WATCH && (remoteSound.target === 'everyone' || (WATCH_TV && remoteSound.target === 'both'));
+  const partyOn = () => WATCH && !WATCH_TV && remoteSound.on && remoteSound.target === 'everyone';
+  const partyNeedsJoin = () => partyOn() && !partyJoined && !partyDeclined;
+
+  // Tapping the Share live heading 7 times (within a few seconds) shows or hides party mode.
+  let partyTaps = [];
+  function partyTap() {
+    const now = Date.now();
+    partyTaps = partyTaps.filter((t) => now - t < 3000).concat(now);
+    if (partyTaps.length < 7) return;
+    partyTaps = [];
+    partyUnlocked = !partyUnlocked;
+    try { localStorage.setItem(PARTY_KEY, partyUnlocked ? 'on' : 'off'); } catch (_) { /* ignore */ }
+    if (partyUnlocked) tvSetupOpen = true; // show where the new option lives
+    else if (roomSound === 'everyone') {
+      roomSound = 'both';
+      try { localStorage.setItem(ROOM_KEY, roomSound); } catch (_) { /* ignore */ }
+      queuePublish();
+    }
+    toast(partyUnlocked ? '🎉 Party mode unlocked' : 'Party mode hidden');
+    renderSheet();
+  }
 
   function setSyncLead(ms) {
     syncLead = Math.min(LEAD_MAX, Math.max(LEAD_MIN, ms));
@@ -1684,7 +1732,7 @@
     }
   }
   function syncReadout() {
-    if (!tvSynced()) return '';
+    if (!WATCH_TV || !remoteSynced()) return '';
     const { played, skipped, trip, slowest, lead } = syncStats;
     const ms = (v) => (v === null ? '–' : `${v} ms`);
     return `<div class="sync-readout" aria-hidden="true">Sync test · ${played} played · ${skipped} skipped · trip ${ms(trip)} · slowest ${ms(slowest)} · delay ${lead === null ? '–' : (lead / 1000).toFixed(1) + ' s'}</div>`;
@@ -1694,7 +1742,11 @@
   // play it; the TV display does only when the operator sends sound there (and someone has
   // clicked to allow it).
   function soundHere() {
-    if (WATCH) return WATCH_TV && tvSoundEnabled && remoteSound.on && tvGetsSound(remoteSound.target);
+    if (WATCH) {
+      if (!remoteSound.on) return false;
+      if (WATCH_TV) return tvSoundEnabled && tvGetsSound(remoteSound.target);
+      return remoteSound.target === 'everyone' && partyJoined; // party mode, and they joined in
+    }
     return soundOn && !(share && roomSound === 'tv');
   }
   const tvNeedsSoundClick = () => WATCH_TV && remoteSound.on && tvGetsSound(remoteSound.target)
@@ -2024,7 +2076,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty'];
 
   app.addEventListener('click', (e) => {
     const t = e.target.closest('button');
@@ -2062,6 +2114,8 @@
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       case 'watchEntry': openSheet({ type: 'watch' }); break;
       case 'whoami': openSheet({ type: 'who' }); break;
+      case 'joinParty': partyJoined = true; unlockAudio(); sfx.extra(); render(); break;
+      case 'declineParty': partyDeclined = true; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
       case 'dismissUp': dismissed.up = turnKey(); render(); break;
       case 'leaveWatch': location.href = location.pathname; break;
@@ -2316,15 +2370,15 @@
       const out = byId(knockedOut.p);
       showResult(knockedOut.p, 'out', 1900);
       if (out) flashOut(out.name);
-      if (S.phase === 'playing' && !tvSynced()) sfx.out();
+      if (S.phase === 'playing' && !remoteSynced()) sfx.out();
     } else if (lastShot.a === 'miss') {
       showResult(p.id, 'miss', 950);
     } else if (lastShot.a === 'extra' && lastShot.late) {
       showResult(p.id, 'extra', 1500, (S.last && S.last.bonus) || 1);
-      if (!tvSynced()) sfx.extra();
+      if (!remoteSynced()) sfx.extra();
     } else if (lastShot.a === 'made') {
       const extras = added.filter((e) => e.a === 'extra' && !e.late && e.p === p.id).length;
-      if (extras) { showResult(p.id, 'extra', 1500, extras); if (!tvSynced()) sfx.extra(); }
+      if (extras) { showResult(p.id, 'extra', 1500, extras); if (!remoteSynced()) sfx.extra(); }
       else showResult(p.id, 'safe', 750);
     }
   }
@@ -2336,7 +2390,7 @@
     S = { ...freshState(), ...game, tv: S.tv };
     applyRemoteClock(clock);
     remoteSound = room ? { on: !!room.sound, target: roomTarget(room.target) } : { on: false, target: 'phone' };
-    if (WATCH_TV) scheduleRemoteSfx(Array.isArray(stamped) ? stamped : []);
+    scheduleRemoteSfx(Array.isArray(stamped) ? stamped : []);
     remote.status = 'live';
     if (!Array.isArray(S.log)) S.log = [];
     if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo

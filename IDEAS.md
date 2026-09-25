@@ -26,8 +26,12 @@ A read-only live copy of the current game that anyone can open, on their own pho
 - **Done on the branch:** sharing and the watch page; the shot clock synced to server time; the TV link with big-screen and sideways-phone layouts; room sound routing; QR codes on the Share screen and a join QR on the TV.
 - **Still to do:** optional "follow me" alerts when you're next (a sound and screen flash; vibration on Android only).
 
-## "Everyone" room sound: party mode 🎉 (parked, experimental)
+## "Everyone" room sound: party mode 🎉 (built, a hidden extra)
 *Suggested September 2026, while building live sharing.*
+
+**Built September 2026.** Room sound gained **Both** (phone + TV) and, once unlocked, **Everyone**. Event sounds are stamped with the shared server time plus a sync delay (default 0.5 s, adjustable in Share live) and play together everywhere; late arrivals are skipped. Watchers join with one tap. The TV shows a sync-test readout (trip times) on Both/Everyone. First home-wifi test: trips 77–141 ms, 21 played, 0 skipped, “pretty tight”.
+
+*The original plan:*
 
 A third choice in Share live: **Room sound plays on: This phone | TV screen | Everyone**. Every phone watching the game plays the sounds together, as a fun "nuclear option" to get the room's attention.
 - **Sync, not cacophony:** every screen already shares Firebase's clock. Shot clock ticks and the buzzer are calculated from it, so they'd already play together. For events (knockout, coin, William Tell fanfare), the operator stamps each one with the server time, and every device (operator, TV and phones) plays it about 1 second later, all at once. A device that receives it too late skips the sound rather than playing out of step.
@@ -35,7 +39,7 @@ A third choice in Share live: **Room sound plays on: This phone | TV screen | Ev
 - **Limits:** iPhones with the silent switch on stay silent. Sync should be within a few hundredths of a second.
 - **Bonus:** the TV screen mode could use the same scheduling, so the TV plays exactly in time too.
 
-## Operator's phone in landscape (built on the `landscape` branch)
+## Operator's phone in landscape (built)
 *Noted September 2026.*
 
 The operator's view is designed for a phone held upright. Turned sideways it works, but it scrolls a lot. A landscape layout could put the chalkboard on the left and the buttons on the right. (A display phone turned sideways already has its own layout via the TV link.)
