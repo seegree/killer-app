@@ -545,6 +545,10 @@ body.watch .clock-final { cursor: default; }
 @media (max-width: 520px) {
   .now-next { flex-direction: column; gap: 0.1em; }
   .nx-sep { display: none; }
+  /* Paused: fill the same slot as the stacked Next/Then (so nothing below jumps), with the
+     buttons centred between the lives and the clock bar, and small enough to fit inside the card */
+  body:not(.tv) .now-felt .clock-actions { margin-top: 14px; min-height: 68px; align-items: flex-end; gap: 6px; }
+  body:not(.tv) .clock-actions button { min-width: 0; padding: 0 4px; font-size: clamp(13px, 4cqi, 18px); }
 }
 .mk.xs { gap: 0.2em; }
 .mk.xs .chalk { width: 0.9em; height: 0.9em; background: none; box-shadow: none; }
