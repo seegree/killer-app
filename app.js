@@ -26,7 +26,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.24.7';
+  const APP_VERSION = '2026.09.24.8';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -964,7 +964,7 @@
               ? `<div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div>`
               : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : WATCH
-              ? `<span class="live-badge" title="Watching game ${WATCH}">● Live</span>${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">TV</button>' : ''}<button class="icon-btn" data-do="leaveWatch" aria-label="Leave and go back to my game">✕</button>`
+              ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">📺 TV</button>' : ''}<span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
               : `<div class="top-actions">
                   <button class="btn btn-ghost btn-sm top-extra" data-do="rerackTop" title="Re-rack (B)">🎱 Re-rack</button>
                   ${canTV() ? '<button class="btn btn-ghost btn-sm top-extra" data-do="tv" title="TV mode (T)">📺 TV</button>' : ''}
