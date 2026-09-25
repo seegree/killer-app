@@ -26,7 +26,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.24.12';
+  const APP_VERSION = '2026.09.25.1';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -41,8 +41,8 @@
   const ROOM_TARGETS = ['phone', 'tv', 'both', 'everyone'];
   const roomTarget = (t) => (ROOM_TARGETS.includes(t) ? t : 'phone');
   const tvGetsSound = (t) => t === 'tv' || t === 'both' || t === 'everyone';
-  // Party mode ("Everyone": every watching phone joins in) is a hidden extra: tap the Share live
-  // heading 7 times to show or hide it. This phone remembers.
+  // Party mode ("Everyone": every watching phone joins in) is a hidden extra, off until
+  // unlocked on this phone (see partyTap). This phone remembers.
   const PARTY_KEY = 'killer.party.v1';
   let partyUnlocked = (() => { try { return localStorage.getItem(PARTY_KEY) === 'on'; } catch (_) { return false; } })();
   let roomSound = (() => { try { return roomTarget(localStorage.getItem(ROOM_KEY)); } catch (_) { return 'phone'; } })();
@@ -1673,7 +1673,7 @@
   const partyOn = () => WATCH && !WATCH_TV && remoteSound.on && remoteSound.target === 'everyone';
   const partyNeedsJoin = () => partyOn() && !partyJoined && !partyDeclined;
 
-  // Tapping the Share live heading 7 times (within a few seconds) shows or hides party mode.
+  // Shows or hides the party mode option.
   let partyTaps = [];
   function partyTap() {
     const now = Date.now();
