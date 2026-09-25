@@ -59,6 +59,8 @@ button {
   touch-action: manipulation;
 }
 button:disabled { cursor: default; opacity: 0.38; }
+/* Tap targets that aren't buttons: quick taps shouldn't zoom the page, select text or open the image menu */
+.wordmark, .share-title { touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 :focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
 kbd {
   font-family: var(--ui);
@@ -280,10 +282,10 @@ kbd {
 .rdel:hover { background: rgba(229, 72, 77, 0.16); color: var(--red); }
 
 .empty { text-align: center; padding: 12px; color: var(--chalk-dim); }
-.empty p { margin: 14px 0 18px; }
+.empty p { margin: 10px 0 8px; }
 .empty-rack { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
 .empty-rack span { display: flex; gap: 3px; }
-.empty-rack i { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.05)); }
+.empty-rack i { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.05)); }
 
 .setup-foot {
   position: sticky;
@@ -297,8 +299,10 @@ kbd {
 .setup-foot .cs-stepper button { width: 34px; height: 34px; border-radius: 10px; font-size: 18px; }
 .setup-foot .cs-stepper b { font-size: 21px; }
 /* Game length (once unlocked): one slim row above the shot clock */
-.setup-foot .mode-seg { width: 100%; margin: 0 0 8px; }
-.setup-foot .mode-seg button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; padding: 0 8px; font-size: 14px; }
+.setup-foot .seg.mode-seg { width: 100%; margin: 0 0 12px; }
+.mode-seg i { font-style: normal; margin-right: 4px; }
+.setup-foot .mode-seg button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 3px 6px; font-size: 14px; line-height: 1.15; }
+.mode-seg small { font-size: 11px; font-weight: 600; opacity: 0.75; }
 .mode-tag { font-size: 15px; line-height: 1; }
 
 /* ------------------------------------------------------------------ game layout (mobile first) */

@@ -897,7 +897,7 @@
         <div class="setup-foot">
           ${modesUnlocked ? `
           <div class="seg seg-sm mode-seg" role="radiogroup" aria-label="Game length">
-            ${[3, 2, 1].map((n) => `<button role="radio" class="${gameLives() === n ? 'on' : ''}" aria-checked="${gameLives() === n}" data-do="mode" data-n="${n}">${MODE_ICON[n] ? `<span aria-hidden="true">${MODE_ICON[n]}</span>` : ''}${MODES[n]}</button>`).join('')}
+            ${[3, 2, 1].map((n) => `<button role="radio" class="${gameLives() === n ? 'on' : ''}" aria-checked="${gameLives() === n}" data-do="mode" data-n="${n}"><span>${MODE_ICON[n] ? `<i aria-hidden="true">${MODE_ICON[n]}</i>` : ''}${MODES[n]}</span><small>${n} ${n === 1 ? 'life' : 'lives'}</small></button>`).join('')}
           </div>` : ''}
           <div class="clock-setting">
             <button class="switch${clockPrefs.on ? ' on' : ''}" data-do="clockToggle" role="switch" aria-checked="${clockPrefs.on}" aria-label="Shot clock"><i></i></button>
