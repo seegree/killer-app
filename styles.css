@@ -412,16 +412,12 @@ kbd {
 .clock.idle { color: var(--chalk-dim); font-size: clamp(18px, 5cqi, 36px); }
 .clock.paused { color: var(--gold); border-color: rgba(245, 197, 66, 0.5); font-size: clamp(18px, 5cqi, 36px); }
 @keyframes clockPulse { 50% { transform: scale(1.08); } }
-/* Paused: big Resume / Re-rack / Restart buttons across the lower chalkboard */
+/* Paused: big Resume / Re-rack / Back-to buttons take the Next/Then row's place */
 .clock-actions {
-  position: absolute;
-  z-index: 3;
-  left: 10px;
-  right: 10px;
-  bottom: 16px;
   display: flex;
   justify-content: center;
   gap: 8px;
+  margin-top: 14px;
   animation: fadeUp 0.25s ease both;
 }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } }
@@ -438,7 +434,9 @@ kbd {
   white-space: nowrap;
 }
 .clock-actions .ca-go { background: var(--green); border-color: transparent; color: #06140d; }
-.now.clock-paused .now-next { visibility: hidden; }
+/* Leave room above the bar whenever the clock is showing */
+.now-felt:has(.clock-bar) { padding-bottom: 42px; }
+body.tv .now-felt:has(.clock-bar) { padding-bottom: 50px; }
 .clock-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; background: rgba(0, 0, 0, 0.35); }
 .clock-bar i { display: block; height: 100%; background: var(--chalk); opacity: 0.7; transform-origin: left center; transition: transform 0.1s linear; }
 .clock-bar.warn i { background: var(--red); opacity: 1; }

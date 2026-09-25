@@ -26,7 +26,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.24.8';
+  const APP_VERSION = '2026.09.24.9';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -925,11 +925,6 @@
     const cv = clockView();
     const clockHtml = showClock ? `
       <button class="clock${cv.paused ? ' paused' : ''}${cv.warn ? ' warn' : ''}${cv.time ? ' time' : ''}" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${cv.text}</span></button>
-      ${paused && !WATCH ? `<div class="clock-actions">
-        <button data-do="clockResume" class="ca-go">▶ Resume</button>
-        <button data-do="clockRerack">🎱 Re-rack</button>
-        <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
-      </div>` : ''}
       <button class="clock-final" data-do="clock" aria-label="Pause shot clock" tabindex="-1"><span class="${cv.warn ? 'beat' : ''}" id="clockFinal">${cv.warn ? Math.ceil(cv.left / 1000) : ''}</span>${WATCH ? '' : '<small>Tap to pause</small>'}</button>
       <div class="clock-bar${cv.barWarn ? ' warn' : ''}" aria-hidden="true"><i id="clockBar" style="transform:scaleX(${cv.scale})"></i></div>`
       : clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '';
@@ -974,13 +969,19 @@
 
         <div class="stage">
           <div class="left">
-            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${paused && !WATCH ? ' clock-paused' : ''}${showClock && cv.warn ? ' final' : ''}" aria-live="polite">
+            <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${showClock && cv.warn ? ' final' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
                 <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : 'Now shooting'}</div>
                 <div class="now-name" style="--fit:${fit(p.name)}">${esc(p.name)}</div>
                 <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives <= 1 ? ' last' : ''}">${livesText}</span></div>
-                <div class="now-next">${nextLine}</div>
+                ${paused && !WATCH
+                  ? `<div class="clock-actions">
+                      <button data-do="clockResume" class="ca-go">▶ Resume</button>
+                      <button data-do="clockRerack">🎱 Re-rack</button>
+                      <button data-do="clockRestart">↺ Back to ${clockPrefs.secs}</button>
+                    </div>`
+                  : `<div class="now-next">${nextLine}</div>`}
               </div>
             </section>
 
