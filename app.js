@@ -910,7 +910,7 @@
             </div>
           </div>
           <button class="btn btn-start" data-do="start" ${r.length < 2 ? 'disabled' : ''}>
-            ${r.length < 2 ? 'Add at least 2 players' : `${MODE_ICON[gameLives()] ? `<span class="start-mode" aria-hidden="true">${MODE_ICON[gameLives()]}</span>` : ''}Rack ’em · ${r.length} players`}
+            ${r.length < 2 ? 'Add at least 2 players' : `${MODE_ICON[gameLives()] ? `<span class="start-mode" aria-hidden="true"><i>${MODE_ICON[gameLives()]}</i></span>` : ''}Rack ’em · ${r.length} players`}
           </button>
         </div>
       </section>`;
