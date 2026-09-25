@@ -833,7 +833,7 @@ body.win::before { display: none; }
   .win-stats span { letter-spacing: 0.02em; }
 }
 /* Laptop / TV: poster on the left, results on the right */
-@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+@media (min-width: 900px) and (min-aspect-ratio: 1/1), (orientation: landscape) and (max-height: 600px) {
   .win-layout { width: min(1180px, 100%); display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: clamp(28px, 5vw, 72px); }
   .win-poster { height: min(84dvh, 900px); }
   .win-label { margin-top: 0; }
@@ -1463,4 +1463,103 @@ body.watch .pc:active { transform: none; }
 
 /* "Still Chris?" */
 .sheet-btn.still-yes { padding: 18px 16px; font-family: var(--display); font-weight: 400; font-size: 30px; letter-spacing: 0.03em; text-align: center; }
+
+/* ------------------------------------------------------------------ phones held sideways
+   Operator and viewers (the TV display has its own layout): one screen, no page scrolling.
+   Chalkboard on the left; the player list on the right scrolls on its own, with the
+   scoring buttons (or the viewer's strip) pinned beneath it. */
+@media (orientation: landscape) and (max-height: 600px) {
+  body:not(.tv) .game { height: 100dvh; min-height: 0; overflow: hidden; }
+  body:not(.tv) .topbar {
+    padding: calc(var(--safe-t) + 4px) calc(env(safe-area-inset-right, 0px) + 12px) 4px calc(env(safe-area-inset-left, 0px) + 12px);
+  }
+  body:not(.tv) .brand-sm { font-size: 22px; }
+  body:not(.tv) .pill { padding: 4px 10px; }
+  body:not(.tv) .stage {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "now board" "now controls";
+    gap: 8px 12px;
+    padding: 0 calc(env(safe-area-inset-right, 0px) + 10px) calc(var(--safe-b) + 8px) calc(env(safe-area-inset-left, 0px) + 10px);
+  }
+  body:not(.tv) .left { display: contents; }
+  body:not(.tv) .now { grid-area: now; display: flex; min-height: 0; padding: 6px; border-radius: 18px; }
+  body:not(.tv) .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4px 12px 10px; border-radius: 13px; }
+  body:not(.tv) .now-felt:has(.clock-bar) { padding-bottom: 20px; }
+  body:not(.tv) .now-label { font-size: max(10px, 3vh); }
+  body:not(.tv) .now-name { font-size: calc(min(18cqi, 30vh) * var(--fit, 1)); margin: 0 0 1vh; }
+  body:not(.tv) .now-status { font-size: max(20px, 8vh); }
+  body:not(.tv) .now-next { font-size: max(16px, 6.5vh); margin-top: 1vh; flex-direction: row; gap: 0.2em 0.7em; }
+  body:not(.tv) .nx-sep { display: block; }
+  body:not(.tv) .clock { font-size: max(18px, 7vh); top: 4px; right: 6px; }
+  body:not(.tv) .clock-bar { height: 8px; }
+  body:not(.tv) .clock-actions { margin-top: 1.5vh; }
+  body:not(.tv) .clock-actions button { min-height: 40px; font-size: 14px; }
+  body:not(.tv) .board { grid-area: board; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: 8px; }
+  body:not(.tv) .board-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+  body:not(.tv) .pc { min-height: 40px; padding: 3px 6px 3px 10px; border-radius: 10px; }
+  body:not(.tv) .pc-name { font-size: calc(19px * var(--nfit, 1)); }
+  body:not(.tv) .pc .chalk { width: 26px; height: 26px; }
+  body:not(.tv) .tag { top: -7px; font-size: 9px; }
+  body:not(.tv) .controls {
+    grid-area: controls;
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  body:not(.tv) .lastline { min-height: 30px; margin-bottom: 4px; font-size: 14px; }
+  body:not(.tv) .undo { min-height: 32px; }
+  body:not(.tv) .actions { gap: 8px; }
+  body:not(.tv) .act { min-height: 58px; flex-direction: row; gap: 6px; border-radius: 14px; }
+  body:not(.tv) .act-glyph { font-size: 20px; }
+  body:not(.tv) .act-label { font-size: 21px; padding-top: 2px; }
+  body:not(.tv) .act-sub { display: none; }
+  body:not(.tv) .act kbd { display: none; }
+  body:not(.tv) .you-strip { margin-top: 2px; padding: 6px 12px; }
+  body:not(.tv) .ys-name { font-size: 22px; }
+  body:not(.tv) .ys-turn { font-size: 20px; }
+  #toast { bottom: calc(var(--safe-b) + 90px); }
+
+  /* Winner, sideways: poster beside a compact results column, all on one screen */
+  .winner { padding: calc(var(--safe-t) + 8px) calc(env(safe-area-inset-right, 0px) + 16px) calc(var(--safe-b) + 8px) calc(env(safe-area-inset-left, 0px) + 16px); }
+  .win-layout { gap: 4vw; }
+  .win-poster { height: calc(100dvh - var(--safe-t) - var(--safe-b) - 24px); }
+  .win-label { font-size: 11px; }
+  .win-name { font-size: calc(min(18cqi, 22vh) * var(--fit, 1)); margin: 2px 0; }
+  .win-stats { margin-top: 4px; gap: 6px; }
+  .win-stats li { padding: 5px 4px; border-radius: 10px; }
+  .win-stats b { font-size: max(18px, 7vh); }
+  .win-stats span { font-size: 10px; letter-spacing: 0.02em; }
+  .podium { margin-top: 6px; }
+  .podium li { padding: 3px 10px 3px 4px; }
+  .podium .pname { font-size: 18px; }
+  .win-actions { margin-top: 8px; gap: 6px; }
+  .win-actions .btn { min-height: 38px; font-size: 14px; }
+  .win-actions .btn-start { font-size: 20px; }
+  .watch-entry { margin-top: 6px; padding: 5px 12px; font-size: 13px; }
+
+  /* You're up, sideways: who and lives on the left, the countdown on the right */
+  .up-takeover {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: 1fr auto auto auto 1fr;
+    column-gap: 4vw;
+    align-items: center;
+    justify-items: center;
+    padding: calc(var(--safe-t) + 14px) calc(env(safe-area-inset-right, 0px) + 24px) calc(var(--safe-b) + 28px) calc(env(safe-area-inset-left, 0px) + 24px);
+  }
+  .ut-name { grid-column: 1; grid-row: 2; font-size: calc(min(18cqi, 30vh) * var(--fit, 1)); }
+  .ut-up { grid-column: 1; grid-row: 3; font-size: 13vh; }
+  .ut-lives { grid-column: 1; grid-row: 4; font-size: 7vh; }
+  .ut-clock { grid-column: 2; grid-row: 2 / 4; font-size: 44vh; margin: 0; }
+  .ut-clock.idle, .ut-clock.paused { font-size: 9vh; }
+  .ut-bar { grid-column: 2; grid-row: 4; width: 100%; height: 10px; }
+  .ut-hint { bottom: calc(var(--safe-b) + 8px); font-size: 12px; }
+}
 

@@ -35,7 +35,7 @@ A third choice in Share live: **Room sound plays on: This phone | TV screen | Ev
 - **Limits:** iPhones with the silent switch on stay silent. Sync should be within a few hundredths of a second.
 - **Bonus:** the TV screen mode could use the same scheduling, so the TV plays exactly in time too.
 
-## Operator's phone in landscape (parked)
+## Operator's phone in landscape (built on the `landscape` branch)
 *Noted September 2026.*
 
 The operator's view is designed for a phone held upright. Turned sideways it works, but it scrolls a lot. A landscape layout could put the chalkboard on the left and the buttons on the right. (A display phone turned sideways already has its own layout via the TV link.)
