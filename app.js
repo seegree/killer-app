@@ -1640,7 +1640,7 @@
   const LEAD_STEP = 100;
   const SYNC_GRACE_MS = 40; // this late still sounds together to the ear
   let syncLead = (() => { try { const v = Number(localStorage.getItem(LEAD_KEY)); return v >= LEAD_MIN && v <= LEAD_MAX ? v : 500; } catch (_) { return 500; } })();
-  let sfxQueue = []; // operator: recent stamped sounds, { k: kind, at: server time to play }
+  let sfxQueue = []; // operator: recent stamped sounds, { k: kind, at: server time to play, lead: the delay used }
   const syncedSound = () => !WATCH && !!share && roomSound === 'both';
   const tvSynced = () => WATCH_TV && remoteSound.target === 'both';
 
@@ -1653,14 +1653,17 @@
   function roomSfx(kind) {
     if (!syncedSound()) { sfx[kind](); return; }
     const at = Date.now() + serverOffset() + syncLead;
-    sfxQueue = sfxQueue.filter((e) => e.at > at - 10000).slice(-4).concat({ k: kind, at });
-    queuePublish();
+    sfxQueue = sfxQueue.filter((e) => e.at > at - 10000).slice(-4).concat({ k: kind, at, lead: syncLead });
+    clearTimeout(publishTimer); // send it now, not after the usual short batching wait
+    publishNow();
     setTimeout(() => sfx[kind](), syncLead);
   }
 
-  // TV display: play each new stamped sound on time. The readout keeps score for the sync test.
+  // TV display: play each new stamped sound on time. The readout keeps score for the sync test:
+  // each sound's trip (phone to TV) doesn't depend on the delay setting, and the slowest trip
+  // is the shortest delay that never skips.
   let lastSfxAt = null; // newest stamp already handled (null until the first update)
-  let syncStats = { played: 0, skipped: 0, last: null, closest: null };
+  let syncStats = { played: 0, skipped: 0, trip: null, slowest: null, lead: null };
   function scheduleRemoteSfx(list) {
     const newest = list.reduce((m, e) => Math.max(m, e.at || 0), 0);
     if (lastSfxAt === null) { lastSfxAt = newest; return; } // joining: don't replay old sounds
@@ -1669,8 +1672,12 @@
     const off = serverOffset();
     for (const e of fresh) {
       const spare = Math.round(e.at - off - Date.now()); // how early it arrived, in ms
-      syncStats.last = spare;
-      syncStats.closest = syncStats.closest === null ? spare : Math.min(syncStats.closest, spare);
+      if (e.lead) {
+        const trip = e.lead - spare;
+        syncStats.trip = trip;
+        syncStats.slowest = syncStats.slowest === null ? trip : Math.max(syncStats.slowest, trip);
+        syncStats.lead = e.lead;
+      }
       if (spare < -SYNC_GRACE_MS) { syncStats.skipped++; continue; }
       syncStats.played++;
       setTimeout(() => sfx[e.k](), Math.max(0, spare));
@@ -1678,9 +1685,9 @@
   }
   function syncReadout() {
     if (!tvSynced()) return '';
-    const { played, skipped, last, closest } = syncStats;
-    const ms = (v) => (v === null ? '–' : v >= 0 ? `${v} ms early` : `${-v} ms late`);
-    return `<div class="sync-readout" aria-hidden="true">Sync test · ${played} played · ${skipped} skipped · last ${ms(last)} · closest ${ms(closest)}</div>`;
+    const { played, skipped, trip, slowest, lead } = syncStats;
+    const ms = (v) => (v === null ? '–' : `${v} ms`);
+    return `<div class="sync-readout" aria-hidden="true">Sync test · ${played} played · ${skipped} skipped · trip ${ms(trip)} · slowest ${ms(slowest)} · delay ${lead === null ? '–' : (lead / 1000).toFixed(1) + ' s'}</div>`;
   }
 
   // Room sound plays on the operator's phone, the TV display, or both. Viewers' phones never
