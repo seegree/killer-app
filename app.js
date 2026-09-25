@@ -26,7 +26,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.24.6';
+  const APP_VERSION = '2026.09.24.7';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -54,6 +54,7 @@
   const alerted = { deck: null, up: null }; // turn keys already alerted, so each fires once
   const dismissed = { deck: null, up: null };
   const shown = { deck: null, up: null }; // animate the banner/takeover only when they first appear
+  let askedWho = false; // the "who are you?" question is asked once per visit
   let share = WATCH ? null : (() => {
     try {
       const v = JSON.parse(localStorage.getItem(SHARE_KEY));
@@ -257,6 +258,9 @@
 
   const following = () => !!(WATCH && !WATCH_TV && me.codes[WATCH]);
   const mePlayer = () => (following() ? S.players.find((p) => nameKey(p.name) === nameKey(me.codes[WATCH])) : null);
+
+  // The name this phone used last time, if that player is in this game.
+  const rememberedPlayer = () => (me.name ? S.players.find((p) => nameKey(p.name) === nameKey(me.name)) : null);
 
   function saveMe() {
     try { localStorage.setItem(ME_KEY, JSON.stringify(me)); } catch (_) { /* ignore */ }
@@ -1356,11 +1360,27 @@
   function renderSheet() {
     if (!sheetMode) return closeSheet();
 
+    if (sheetMode.type === 'still') {
+      const p = rememberedPlayer();
+      if (!p) { sheetMode = { type: 'who' }; return renderSheet(); }
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Still ${esc(p.name)}?</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">You’ll get a heads-up when you’re on deck, and a big alert when it’s your turn.</p>
+          <button class="sheet-btn primary still-yes" data-sheet="pickMe" data-name="${esc(p.name)}">Yes, I’m ${esc(p.name)}</button>
+          <button class="sheet-btn" data-sheet="someoneElse">Someone else<small>Pick from the player list</small></button>
+          <button class="link-btn" data-sheet="pickMe" data-name="">I’m just watching</button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'who') {
       const q = (sheetMode.q || '').trim();
       const names = S.players.map((p) => p.name).sort((a, b) => a.localeCompare(b));
       const shown = q ? names.filter((n) => nameKey(n).includes(nameKey(q))) : names;
-      const suggest = !me.codes[WATCH] && me.name && names.find((n) => nameKey(n) === nameKey(me.name));
       sheet.innerHTML = `
         <div class="sheet-body">
           <div class="sheet-head">
@@ -1368,7 +1388,6 @@
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
           <p class="sheet-note">Get a heads-up when you’re on deck, and a big alert when it’s your turn.</p>
-          ${suggest ? `<button class="sheet-btn primary" data-sheet="pickMe" data-name="${esc(suggest)}">I’m ${esc(suggest)}</button>` : ''}
           <input type="search" class="who-search" data-who-search placeholder="Search names" value="${esc(q)}" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Search names">
           <div class="who-grid">
             ${shown.map((n) => `<button class="who-name${me.codes[WATCH] && nameKey(n) === nameKey(me.codes[WATCH]) ? ' on' : ''}" data-sheet="pickMe" data-name="${esc(n)}">${esc(n)}</button>`).join('') || '<p class="sheet-note">No matching names.</p>'}
@@ -1547,6 +1566,7 @@
       case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
       case 'copyLink': copyLink(shareLink()); break;
       case 'pickMe': choosePlayer(b.dataset.name || ''); break;
+      case 'someoneElse': sheetMode = { type: 'who' }; renderSheet(); break;
       case 'toggleAlertSound': me.sound = !me.sound; saveMe(); renderSheet(); if (me.sound) { unlockAudio(); sfx.deck(); } break;
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
@@ -2229,7 +2249,10 @@
     else if (wasLive) stampFromRemote(S.log.slice(prevLog.length));
     render();
     // First time in this game: ask which player they are (skipped on the TV display).
-    if (!WATCH_TV && !(WATCH in me.codes) && S.players.length && !sheet.open) openSheet({ type: 'who' });
+    if (!WATCH_TV && !askedWho && !(WATCH in me.codes) && S.players.length && !sheet.open) {
+      askedWho = true;
+      openSheet({ type: rememberedPlayer() ? 'still' : 'who' });
+    }
     checkMyTurn();
   }
 
