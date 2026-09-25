@@ -176,6 +176,9 @@ kbd {
 .hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .wordmark { margin: 0; line-height: 0; }
 .wordmark img { display: block; width: auto; height: clamp(60px, 19vw, 92px); }
+/* Start screen: the wordmark gives way to the Watch button on narrow phones rather than overflowing */
+.hero .wordmark { flex: 0 1 auto; min-width: 0; }
+.hero .wordmark img { width: 100%; max-width: calc(clamp(60px, 19vw, 92px) * 2.6); height: auto; }
 .hero .watch-entry { flex: none; margin-top: 0; white-space: nowrap; }
 .watch-entry, .roster-tools .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .last-roster { width: 100%; margin-top: 12px; }
@@ -221,6 +224,7 @@ kbd {
 }
 .roster-tools { display: flex; gap: 8px; }
 .roster-tools .btn { min-height: 42px; padding: 0 14px; font-size: 14px; }
+@media (max-width: 360px) { .roster-tools .btn { padding: 0 10px; } } /* the smallest phones: Shuffle and Clear fit beside the heading */
 
 .roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .roster li {
@@ -1193,7 +1197,7 @@ body.watch .pc:active { transform: none; }
   padding: calc(var(--safe-t) + 24px) var(--pad) calc(var(--safe-b) + 24px);
   text-align: center;
 }
-.watch-status .wordmark img { width: min(80vw, 420px); }
+.watch-status .wordmark img { width: min(80vw, 420px); height: auto; }
 .ws-msg { max-width: 30em; margin: 0; font-size: 18px; color: var(--chalk); line-height: 1.4; }
 .ws-msg b { color: var(--gold); letter-spacing: 0.08em; }
 .ws-note { margin: 0; font-size: 13px; color: var(--chalk-faint); }
@@ -1689,7 +1693,7 @@ body.watch .pc:active { transform: none; }
   }
   .setup > * { grid-column: 1; }
   .setup .hero { margin-bottom: 12px; }
-  .setup .wordmark img { height: 17vh; }
+  .setup .wordmark img { width: auto; max-width: none; height: 17vh; }
   .setup .roster-head { grid-column: 2; grid-row: 1; margin: 0 0 8px; }
   .setup .roster, .setup .empty { grid-column: 2; grid-row: 2 / -1; min-height: 0; overflow-y: auto; align-content: start; padding-bottom: calc(var(--safe-b) + 12px); }
   .setup .roster li { min-height: 46px; }

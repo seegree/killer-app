@@ -169,6 +169,7 @@
     clearResult(false);
     clk = null;
     sfx.stop();
+    cancelPendingSfx();
     const { tv, log } = S;
     const { logLen = 0, ...prev } = JSON.parse(history.pop());
     S = { ...prev, log: log.slice(0, logLen), tv };
@@ -591,6 +592,7 @@
 
   function rematch() {
     sfx.stop();
+    cancelPendingSfx();
     beginWith(shuffle(S.players.map((p) => p.name)));
     toast('🔁 New order — good luck');
   }
@@ -609,6 +611,7 @@
 
   function newGame() {
     sfx.stop();
+    cancelPendingSfx();
     history = [];
     prevLives.clear();
     S = { ...freshState(), roster: S.players.map((p) => ({ id: uid(), name: p.name })) };
@@ -826,13 +829,14 @@
     else if (view === 'recap') renderRecap();
     else renderWinner();
     if (S.phase === 'finished') prepareShareImage();
+    else shareImg = { key: null, blob: null, busy: null }; // Undo from the end: start afresh next time
 
     if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
     if (WATCH_TV) app.insertAdjacentHTML('beforeend', syncReadout());
-    if (partyNeedsJoin()) {
+    if (partyNeedsJoin() || partyNeedsWake()) {
       app.insertAdjacentHTML('beforeend', `
         <div class="party-banner" role="alert">
-          <button class="pb-join" data-do="joinParty">🎉 Party mode! Tap to join the room sound</button>
+          <button class="pb-join" data-do="joinParty">${partyJoined ? '🔊 Tap to turn the room sound back on' : '🎉 Party mode! Tap to join the room sound'}</button>
           <button class="pb-no" data-do="declineParty" aria-label="No thanks">✕</button>
         </div>`);
     }
@@ -1056,7 +1060,7 @@
     const podium = S.outOrder.slice().reverse().slice(0, 2).map(byId).filter(Boolean);
     app.innerHTML = `
       <section class="winner">
-        ${fanfare ? '<button class="mute-fanfare" data-do="muteFanfare" aria-label="Mute fanfare">🔇 Mute fanfare</button>' : ''}
+        ${fanfare ? MUTE_FANFARE : ''}
         <div class="win-layout">
           <img class="win-poster" src="poster.svg" alt="Killer">
           <div class="win-info">
@@ -1307,7 +1311,8 @@
   let shareImg = { key: null, blob: null, busy: null };
 
   const shareButton = (label = 'Share') => `<button class="btn btn-ghost btn-share" data-do="shareResults"><span aria-hidden="true">📤</span>${label}</button>`;
-  const shareKey = () => `${S.winner}|${(S.log || []).length}|${S.players.length}|${S.startedAt || ''}`;
+  const shareKey = () => JSON.stringify([S.winner, S.outOrder, (S.log || []).length, S.startLives, S.startedAt,
+    S.players.map((p) => [p.name, p.lives, p.pots, p.shots, p.extras])]);
 
   function prepareShareImage() {
     if (S.phase !== 'finished') return Promise.resolve(null);
@@ -1327,7 +1332,13 @@
     const name = `killer-${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}.png`;
     const file = new File([blob], name, { type: 'image/png' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Killer results' }); } catch (_) { /* closed the share menu */ }
+      try {
+        await navigator.share({ files: [file], title: 'Killer results' });
+      } catch (err) {
+        // Closing the share menu is fine. Anything else (usually: the image took too long, so the
+        // phone no longer counts it as a tap) gets a nudge; the image is ready now.
+        if (!err || err.name !== 'AbortError') toast('Image ready. Tap Share again.');
+      }
       return;
     }
     // No share menu (most laptops): download it instead.
@@ -1339,7 +1350,11 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => render(), 1600); }
+    if (btn) {
+      const label = btn.innerHTML;
+      btn.textContent = '✓ Saved';
+      setTimeout(() => { if (btn.isConnected) btn.innerHTML = label; }, 1600);
+    }
   }
 
   // The wordmark has no set size, which some browsers won't draw: load it with one.
@@ -1358,16 +1373,19 @@
   }
 
   async function drawShareImage() {
-    await Promise.all(['400 100px "Bebas Neue"', '500 30px Inter', '700 30px Inter'].map((f) => document.fonts.load(f))).catch(() => {});
-    const logo = await loadWordmark().catch(() => null);
+    // Take everything from the game now, before waiting on fonts, in case it changes meanwhile (Undo).
     const stats = gameStats();
     const w = byId(S.winner) || S.players.find(isAlive);
     const data = {
-      w,
-      order: [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean),
+      w: w && { ...w },
+      order: [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean).map((p) => ({ ...p })),
       awards: computeAwards(stats),
       day: new Date(S.startedAt || Date.now()),
+      lives: S.startLives,
+      count: S.players.length,
     };
+    await Promise.all(['400 100px "Bebas Neue"', '500 30px Inter', '700 30px Inter'].map((f) => document.fonts.load(f))).catch(() => {});
+    const logo = await loadWordmark().catch(() => null);
     // Measure first, then draw at the height that needs.
     const probe = document.createElement('canvas').getContext('2d');
     const height = paintShare(probe, data, logo, false);
@@ -1379,7 +1397,7 @@
   }
 
   // Lays out the whole picture top to bottom and returns its height. With draw off it only measures.
-  function paintShare(ctx, { w, order, awards, day }, logo, draw) {
+  function paintShare(ctx, { w, order, awards, day, lives, count }, logo, draw) {
     const M = SHARE_PAD;
     const CW = SHARE_W - M * 2;
     const font = (size, weight = 500, family = 'Inter') => `${weight} ${size}px ${family === 'Inter' ? 'Inter, system-ui, sans-serif' : '"Bebas Neue", Impact, sans-serif'}`;
@@ -1444,7 +1462,7 @@
       y += 150;
     }
     const dateLine = day.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    const bits = [dateLine, MODE_ICON[S.startLives] ? `${MODE_ICON[S.startLives]} ${MODES[S.startLives]}` : null, `${S.players.length} players`].filter(Boolean);
+    const bits = [dateLine, MODE_ICON[lives] ? `${MODE_ICON[lives]} ${MODES[lives]}` : null, `${count} players`].filter(Boolean);
     text(bits.join('  ·  '), SHARE_W / 2, y + 34, { size: 30, weight: 500, color: SC.dim, align: 'center' });
     y += 76;
 
@@ -1503,8 +1521,8 @@
       const textW = aw - 104 - 24;
       const cards = awards.map((a) => {
         const who = a.names.length > 1 ? `${a.names.slice(0, -1).join(', ')} & ${a.names[a.names.length - 1]}` : a.names[0];
-        const nameLines = wrap(who.toUpperCase(), textW, 42, 400, 'display');
-        const detailLines = wrap(a.detail, textW, 23, 500);
+        const nameLines = wrap(who.toUpperCase(), textW, 42, 400, 'display').map((l) => clip(l, textW, 42, 400, 'display'));
+        const detailLines = wrap(a.detail, textW, 23, 500).map((l) => clip(l, textW, 23, 500));
         return { a, nameLines, detailLines, h: 28 + 30 + nameLines.length * 42 + 8 + detailLines.length * 30 + 22 };
       });
       for (let i = 0; i < cards.length; i += 2) {
@@ -1587,7 +1605,7 @@
 
     app.innerHTML = `
       <section class="recap">
-        ${fanfare ? '<button class="mute-fanfare" data-do="muteFanfare" aria-label="Mute fanfare">🔇 Mute fanfare</button>' : ''}
+        ${fanfare ? MUTE_FANFARE : ''}
         <header class="recap-head">
           <button class="btn btn-ghost btn-sm" data-do="recapBack">← Back</button>
           <div class="recap-title">
@@ -1894,7 +1912,8 @@
       case 'someoneElse': sheetMode = { type: 'who' }; renderSheet(); break;
       case 'toggleParty':
         partyJoined = !partyJoined;
-        if (partyJoined) { partyDeclined = false; unlockAudio(); sfx.extra(); }
+        partyDeclined = !partyJoined; // turning it off shouldn't bring the invitation straight back
+        if (partyJoined) { unlockAudio(); sfx.extra(); }
         renderSheet();
         render();
         break;
@@ -1952,6 +1971,8 @@
   const remoteSynced = () => WATCH && (remoteSound.target === 'everyone' || (WATCH_TV && remoteSound.target === 'both'));
   const partyOn = () => WATCH && !WATCH_TV && remoteSound.on && remoteSound.target === 'everyone';
   const partyNeedsJoin = () => partyOn() && !partyJoined && !partyDeclined;
+  // Joined, but the phone was locked or left the app: iPhones need a tap to wake the sound again.
+  const partyNeedsWake = () => partyOn() && partyJoined && !(actx && actx.state === 'running');
 
   // Shows or hides the game length choice on the start screen.
   let modeTaps = [];
@@ -1993,25 +2014,42 @@
   }
 
   // Operator: an event sound (out, extra, win). Plays now, or when synced, at the stamped moment.
+  // Sounds waiting for their moment, so Undo, Rematch and New game can call them off.
+  const pendingSfx = new Set();
+  function laterSfx(kind, ms) {
+    const id = setTimeout(() => { pendingSfx.delete(id); sfx[kind](); }, ms);
+    pendingSfx.add(id);
+  }
+  function cancelPendingSfx() {
+    pendingSfx.forEach(clearTimeout);
+    pendingSfx.clear();
+    const now = Date.now() + serverOffset();
+    sfxQueue = sfxQueue.filter((e) => e.at <= now); // and don't send them to other devices
+  }
+
+  let sfxSeq = 0;
   function roomSfx(kind) {
     if (!syncedSound()) { sfx[kind](); return; }
     const at = Date.now() + serverOffset() + syncLead;
-    sfxQueue = sfxQueue.filter((e) => e.at > at - 10000).slice(-4).concat({ k: kind, at, lead: syncLead });
+    // n only ever goes up (even across reloads), so watchers can't mistake a new sound for an old one
+    sfxSeq = Math.max(sfxSeq + 1, Date.now());
+    sfxQueue = sfxQueue.filter((e) => e.at > at - 10000).slice(-4).concat({ k: kind, at, lead: syncLead, n: sfxSeq });
     clearTimeout(publishTimer); // send it now, not after the usual short batching wait
     publishNow();
-    setTimeout(() => sfx[kind](), syncLead);
+    laterSfx(kind, syncLead);
   }
 
   // TV display: play each new stamped sound on time. The readout keeps score for the sync test:
   // each sound's trip (phone to TV) doesn't depend on the delay setting, and the slowest trip
   // is the shortest delay that never skips.
-  let lastSfxAt = null; // newest stamp already handled (null until the first update)
+  let lastSfxN = null; // newest sound already handled (null until the first update)
   let syncStats = { played: 0, skipped: 0, trip: null, slowest: null, lead: null };
   function scheduleRemoteSfx(list) {
-    const newest = list.reduce((m, e) => Math.max(m, e.at || 0), 0);
-    if (lastSfxAt === null) { lastSfxAt = newest; return; } // joining: don't replay old sounds
-    const fresh = list.filter((e) => e.at > lastSfxAt && typeof sfx[e.k] === 'function').sort((a, b) => a.at - b.at);
-    lastSfxAt = Math.max(lastSfxAt, newest);
+    const seq = (e) => e.n || e.at || 0; // older phones sent no n: fall back to the play time
+    const newest = list.reduce((m, e) => Math.max(m, seq(e)), 0);
+    if (lastSfxN === null) { lastSfxN = newest; return; } // joining: don't replay old sounds
+    const fresh = list.filter((e) => seq(e) > lastSfxN && typeof sfx[e.k] === 'function').sort((a, b) => seq(a) - seq(b));
+    lastSfxN = Math.max(lastSfxN, newest);
     const off = serverOffset();
     for (const e of fresh) {
       const spare = Math.round(e.at - off - Date.now()); // how early it arrived, in ms
@@ -2022,8 +2060,8 @@
         syncStats.lead = e.lead;
       }
       if (spare < -SYNC_GRACE_MS) { syncStats.skipped++; continue; }
-      syncStats.played++;
-      setTimeout(() => sfx[e.k](), Math.max(0, spare));
+      if (soundHere()) syncStats.played++;
+      laterSfx(e.k, Math.max(0, spare));
     }
   }
   function syncReadout() {
@@ -2061,6 +2099,8 @@
     }
     if (!actx) {
       actx = new AC();
+      // Party phones: the wake-up prompt follows the sound's actual state
+      actx.onstatechange = () => { if (partyOn()) render(); };
       master = actx.createGain();
       master.gain.value = 0.55;
       const limiter = actx.createDynamicsCompressor();
@@ -2193,6 +2233,7 @@
   }
 
   let fanfare = null; // { bus, nodes } while the winner fanfare is playing
+  const MUTE_FANFARE = '<button class="mute-fanfare" data-do="muteFanfare" aria-label="Mute fanfare">🔇 Mute fanfare</button>';
 
   function stopFanfare() {
     if (!fanfare || !actx) return;
@@ -2253,6 +2294,10 @@
       const nodes = [];
       const cue = { bus, nodes };
       fanfare = cue;
+      // A fanfare that starts after the screen was drawn (synced room sound plays it a moment
+      // later) still gets its mute button.
+      const screen = document.querySelector('.winner, .recap');
+      if (screen && !screen.querySelector('.mute-fanfare')) screen.insertAdjacentHTML('afterbegin', MUTE_FANFARE);
       // Hide the mute button once the fanfare has finished on its own.
       setTimeout(() => {
         if (fanfare !== cue) return;
@@ -2412,7 +2457,7 @@
       case 'watchEntry': openSheet({ type: 'watch' }); break;
       case 'whoami': openSheet({ type: 'who' }); break;
       case 'joinParty': partyJoined = true; unlockAudio(); sfx.extra(); render(); break;
-      case 'declineParty': partyDeclined = true; render(); break;
+      case 'declineParty': partyDeclined = true; partyJoined = false; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
       case 'dismissUp': dismissed.up = turnKey(); render(); break;
       case 'leaveWatch': location.href = location.pathname; break;
@@ -2711,7 +2756,7 @@
     scheduleRemoteSfx(Array.isArray(stamped) ? stamped : []);
     remote.status = 'live';
     if (!Array.isArray(S.log)) S.log = [];
-    if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
+    if (S.log.length < prevLog.length) { clearResult(false); cancelPendingSfx(); } // the scorekeeper pressed Undo
     else if (wasLive) stampFromRemote(S.log.slice(prevLog.length));
     render();
     // First time in this game: ask which player they are (skipped on the TV display).
@@ -2774,7 +2819,11 @@
 
   setTimeout(checkForUpdate, 2000);
   setInterval(checkForUpdate, 10 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    checkForUpdate();
+    if (partyOn()) render(); // party phones: show the tap-to-wake prompt if the sound went to sleep
+  });
 
   window.matchMedia('(orientation: landscape)').addEventListener('change', () => render());
 
