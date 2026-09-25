@@ -874,12 +874,20 @@ body.win::before { display: none; }
 .podium li { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
 .place { font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 999px; background: rgba(244, 241, 232, 0.14); }
 .podium .pname { font-family: var(--display); font-size: 24px; padding-top: 2px; }
-.win-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+/* Rematch across the top, then Recap, Share, Undo and New game in one row, so the screen fits without scrolling */
+.win-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
 .win-actions .btn-start { grid-column: 1 / -1; }
-.btn-recap { color: var(--gold); border-color: rgba(245, 197, 66, 0.35); }
+.btn-recap, .btn-share { color: var(--gold); border-color: rgba(245, 197, 66, 0.35); }
+/* Recap: share the whole night as one image */
+.recap-share { margin: 26px 0 8px; text-align: center; }
+.recap-share .btn-share { min-height: 52px; padding: 0 26px; font-size: 17px; }
+.recap-share p { margin: 8px 0 0; font-size: 13px; color: var(--chalk-faint); }
 .win-actions .btn { min-height: 56px; }
+.btn-recap, .btn-share { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 @media (max-width: 520px) {
   .win-actions .btn { padding: 0 8px; }
+  .win-actions:not(.watching) .btn:not(.btn-start) { min-height: 50px; padding: 0 4px; font-size: 14px; gap: 4px; }
+  .win-poster { height: min(36dvh, 560px); }
   .win-stats b { font-size: 28px; }
   .win-stats span { letter-spacing: 0.02em; }
 }
@@ -1167,7 +1175,7 @@ body.page-locked { position: fixed; left: 0; right: 0; overflow: hidden; }
 body.watch .pc { cursor: default; }
 body.watch .pc:active { transform: none; }
 .controls.watching .lastline { margin-bottom: 0; }
-.win-actions.watching { grid-template-columns: 1fr; width: min(280px, 100%); margin: 18px auto 0; }
+.win-actions.watching { grid-template-columns: 1fr 1fr; width: min(360px, 100%); margin: 18px auto 0; }
 
 /* Watchers: waiting / not-found screen */
 .watch-status {
@@ -1705,3 +1713,7 @@ body.watch .pc:active { transform: none; }
   .stamp-out { font-size: min(150px, 30vh); }
 }
 
+/* The shortest sideways phones: Watch a game stays on the start screen, so the results fit */
+@media (orientation: landscape) and (max-height: 340px) {
+  .win-actions ~ .watch-entry { display: none; }
+}

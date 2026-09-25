@@ -600,7 +600,7 @@
     prevLives.clear();
     prevCurrentId = null;
     const lives = gameLives(); // Rematch keeps the game length; New game goes back to Classic
-    S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', startLives: lives, players: names.map((n) => newPlayer(n, lives)) };
+    S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', startLives: lives, startedAt: Date.now(), players: names.map((n) => newPlayer(n, lives)) };
     S.log.push({ p: S.players[0].id, a: 'rack' }); // the first shooter breaks
     clk = null;
     save();
@@ -825,6 +825,7 @@
     else if (S.phase === 'playing') renderGame();
     else if (view === 'recap') renderRecap();
     else renderWinner();
+    if (S.phase === 'finished') prepareShareImage();
 
     if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
     if (WATCH_TV) app.insertAdjacentHTML('beforeend', syncReadout());
@@ -1069,10 +1070,11 @@
                 <li><b>${w.lives}</b><span>lives left</span></li>
               </ul>` : ''}
             ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
-            ${WATCH ? '<div class="win-actions watching"><button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button></div>' : `<div class="win-actions">
+            ${WATCH ? `<div class="win-actions watching"><button class="btn btn-ghost btn-recap" data-do="recap"><span aria-hidden="true">🏅</span>Recap</button>${shareButton()}</div>` : `<div class="win-actions">
               <button class="btn btn-start" data-do="rematch">Rematch</button>
+              <button class="btn btn-ghost btn-recap" data-do="recap"><span aria-hidden="true">🏅</span>Recap</button>
+              ${shareButton()}
               <button class="btn btn-ghost" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
-              <button class="btn btn-ghost btn-recap" data-do="recap">🏅 Recap</button>
               <button class="btn btn-ghost" data-do="newgame">New game</button>
             </div>
             <button class="watch-entry" data-do="watchEntry"><span aria-hidden="true">👀</span>Watch a game</button>`}
@@ -1295,6 +1297,262 @@
     return list;
   }
 
+  // ---------------------------------------------------------------- share image
+  // One tall picture of the night: winner, runners-up, awards and final standings. It's drawn on a
+  // canvas (screenshot-style tools are unreliable on iPhones) as soon as the winner or recap screen
+  // shows, so a tap can open the share menu straight away: iPhones only allow that right after a tap.
+  const SHARE_W = 1080;
+  const SHARE_PAD = 64;
+  const SC = { bg: '#07100c', card: '#10211a', line: 'rgba(244, 241, 232, 0.12)', chalk: '#f4f1e8', dim: 'rgba(244, 241, 232, 0.62)', faint: 'rgba(244, 241, 232, 0.4)', gold: '#f5c542', brass: '#e0b25a', feltHi: '#24774f', felt: '#17563b', feltLo: '#0e3a27', woodHi: '#6b4527', woodLo: '#2a180c' };
+  let shareImg = { key: null, blob: null, busy: null };
+
+  const shareButton = (label = 'Share') => `<button class="btn btn-ghost btn-share" data-do="shareResults"><span aria-hidden="true">📤</span>${label}</button>`;
+  const shareKey = () => `${S.winner}|${(S.log || []).length}|${S.players.length}|${S.startedAt || ''}`;
+
+  function prepareShareImage() {
+    if (S.phase !== 'finished') return Promise.resolve(null);
+    const key = shareKey();
+    if (shareImg.key === key) return shareImg.blob ? Promise.resolve(shareImg.blob) : shareImg.busy;
+    shareImg = { key, blob: null, busy: null };
+    shareImg.busy = drawShareImage()
+      .then((blob) => { if (shareImg.key === key) shareImg.blob = blob; return blob; })
+      .catch(() => { if (shareImg.key === key) shareImg.key = null; return null; });
+    return shareImg.busy;
+  }
+
+  async function shareResults(btn) {
+    const blob = shareImg.key === shareKey() && shareImg.blob ? shareImg.blob : await prepareShareImage();
+    if (!blob) { toast('Couldn’t make the image. Try again.'); return; }
+    const day = new Date(S.startedAt || Date.now());
+    const name = `killer-${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}.png`;
+    const file = new File([blob], name, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Killer results' }); } catch (_) { /* closed the share menu */ }
+      return;
+    }
+    // No share menu (most laptops): download it instead.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => render(), 1600); }
+  }
+
+  // The wordmark has no set size, which some browsers won't draw: load it with one.
+  async function loadWordmark() {
+    const svg = await (await fetch('wordmark.svg')).text();
+    const sized = svg.replace('<svg ', '<svg width="1142" height="440" ');
+    const url = URL.createObjectURL(new Blob([sized], { type: 'image/svg+xml' }));
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      return img;
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }
+
+  async function drawShareImage() {
+    await Promise.all(['400 100px "Bebas Neue"', '500 30px Inter', '700 30px Inter'].map((f) => document.fonts.load(f))).catch(() => {});
+    const logo = await loadWordmark().catch(() => null);
+    const stats = gameStats();
+    const w = byId(S.winner) || S.players.find(isAlive);
+    const data = {
+      w,
+      order: [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean),
+      awards: computeAwards(stats),
+      day: new Date(S.startedAt || Date.now()),
+    };
+    // Measure first, then draw at the height that needs.
+    const probe = document.createElement('canvas').getContext('2d');
+    const height = paintShare(probe, data, logo, false);
+    const canvas = document.createElement('canvas');
+    canvas.width = SHARE_W;
+    canvas.height = height;
+    paintShare(canvas.getContext('2d'), data, logo, true);
+    return new Promise((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error('no image'))), 'image/png'));
+  }
+
+  // Lays out the whole picture top to bottom and returns its height. With draw off it only measures.
+  function paintShare(ctx, { w, order, awards, day }, logo, draw) {
+    const M = SHARE_PAD;
+    const CW = SHARE_W - M * 2;
+    const font = (size, weight = 500, family = 'Inter') => `${weight} ${size}px ${family === 'Inter' ? 'Inter, system-ui, sans-serif' : '"Bebas Neue", Impact, sans-serif'}`;
+    const text = (str, x, y, { size, weight, family, color = SC.chalk, align = 'left' }) => {
+      ctx.font = font(size, weight, family);
+      if (!draw) return;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(str, x, y);
+    };
+    const width = (str, size, weight, family) => { ctx.font = font(size, weight, family); return ctx.measureText(str).width; };
+    const wrap = (str, maxW, size, weight, family) => {
+      const words = String(str).split(' ');
+      const lines = [];
+      let line = '';
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && width(next, size, weight, family) > maxW) { lines.push(line); line = word; } else line = next;
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    const clip = (str, maxW, size, weight, family) => {
+      if (width(str, size, weight, family) <= maxW) return str;
+      let s2 = str;
+      while (s2.length > 1 && width(`${s2}…`, size, weight, family) > maxW) s2 = s2.slice(0, -1);
+      return `${s2}…`;
+    };
+    const box = (x, y, bw, bh, r, fill) => {
+      if (!draw) return;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, r);
+      else ctx.rect(x, y, bw, bh); // older iPhones: square corners
+      ctx.fillStyle = fill;
+      ctx.fill();
+    };
+    const heading = (label, y) => {
+      text(label, M, y + 46, { size: 54, weight: 400, family: 'display', color: SC.chalk });
+      const lw = width(label, 54, 400, 'display');
+      box(M + lw + 20, y + 26, CW - lw - 20, 2, 1, SC.line);
+      return y + 76;
+    };
+
+    if (draw) {
+      const bg = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
+      bg.addColorStop(0, '#0d1d16');
+      bg.addColorStop(1, SC.bg);
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, SHARE_W, ctx.canvas.height);
+    }
+
+    // Wordmark, date and game details
+    let y = 56;
+    if (logo) {
+      const lh = 170;
+      const lw = lh * (1142 / 440);
+      if (draw) ctx.drawImage(logo, (SHARE_W - lw) / 2, y, lw, lh);
+      y += lh + 14;
+    } else {
+      text('KILLER', SHARE_W / 2, y + 120, { size: 140, weight: 400, family: 'display', align: 'center' });
+      y += 150;
+    }
+    const dateLine = day.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const bits = [dateLine, MODE_ICON[S.startLives] ? `${MODE_ICON[S.startLives]} ${MODES[S.startLives]}` : null, `${S.players.length} players`].filter(Boolean);
+    text(bits.join('  ·  '), SHARE_W / 2, y + 34, { size: 30, weight: 500, color: SC.dim, align: 'center' });
+    y += 76;
+
+    // Winner: a chalkboard in a wooden frame
+    if (w) {
+      const frame = 18;
+      const inner = CW - frame * 2;
+      let nameSize = 190;
+      while (nameSize > 80 && width(w.name.toUpperCase(), nameSize, 400, 'display') > inner - 80) nameSize -= 6;
+      const panelH = frame * 2 + 44 + 30 + nameSize * 0.9 + 34 + 128 + 44;
+      if (draw) {
+        const wood = ctx.createLinearGradient(M, y, M + CW, y + panelH);
+        wood.addColorStop(0, SC.woodHi);
+        wood.addColorStop(1, SC.woodLo);
+        box(M, y, CW, panelH, 34, wood);
+        const felt = ctx.createRadialGradient(SHARE_W / 2, y, 40, SHARE_W / 2, y + panelH / 2, CW * 0.75);
+        felt.addColorStop(0, SC.feltHi);
+        felt.addColorStop(0.55, SC.felt);
+        felt.addColorStop(1, SC.feltLo);
+        box(M + frame, y + frame, inner, panelH - frame * 2, 22, felt);
+      }
+      let py = y + frame + 44;
+      text('🏆  LAST ONE STANDING', SHARE_W / 2, py + 22, { size: 28, weight: 700, color: SC.gold, align: 'center' });
+      py += 30 + nameSize * 0.9;
+      text(w.name.toUpperCase(), SHARE_W / 2, py + 6, { size: nameSize, weight: 400, family: 'display', align: 'center' });
+      py += 34;
+      const tiles = [[w.shots, 'shots'], [w.pots, 'potted'], [w.extras, 'extra lives'], [w.lives, 'lives left']];
+      const gap = 14;
+      const tw = (inner - 48 - gap * 3) / 4;
+      tiles.forEach(([n, label], i) => {
+        const tx = M + frame + 24 + i * (tw + gap);
+        box(tx, py, tw, 128, 18, 'rgba(0, 0, 0, 0.28)');
+        text(String(n), tx + tw / 2, py + 72, { size: 70, weight: 400, family: 'display', align: 'center' });
+        text(label, tx + tw / 2, py + 106, { size: 22, weight: 500, color: SC.dim, align: 'center' });
+      });
+      y += panelH + 26;
+    }
+
+    // Runners-up
+    const podium = order.slice(1, 3);
+    if (podium.length) {
+      const pw = (CW - 20) / 2;
+      podium.forEach((p, i) => {
+        const px = M + i * (pw + 20);
+        box(px, y, pw, 96, 20, SC.card);
+        text(i === 0 ? '2ND' : '3RD', px + 28, y + 60, { size: 26, weight: 700, color: SC.brass });
+        text(clip(p.name.toUpperCase(), pw - 120, 50, 400, 'display'), px + 96, y + 66, { size: 50, weight: 400, family: 'display' });
+      });
+      y += 96 + 40;
+    }
+
+    // Awards, two to a row
+    if (awards.length) {
+      y = heading('AWARDS', y);
+      const aw = (CW - 20) / 2;
+      const textW = aw - 104 - 24;
+      const cards = awards.map((a) => {
+        const who = a.names.length > 1 ? `${a.names.slice(0, -1).join(', ')} & ${a.names[a.names.length - 1]}` : a.names[0];
+        const nameLines = wrap(who.toUpperCase(), textW, 42, 400, 'display');
+        const detailLines = wrap(a.detail, textW, 23, 500);
+        return { a, nameLines, detailLines, h: 28 + 30 + nameLines.length * 42 + 8 + detailLines.length * 30 + 22 };
+      });
+      for (let i = 0; i < cards.length; i += 2) {
+        const pair = cards.slice(i, i + 2);
+        const rowH = Math.max(...pair.map((c) => c.h));
+        pair.forEach((c, j) => {
+          const cx = M + j * (aw + 20);
+          box(cx, y, aw, rowH, 22, SC.card);
+          text(c.a.icon, cx + 52, y + 74, { size: 56, weight: 500, align: 'center' });
+          let cy = y + 28;
+          text(c.a.title, cx + 104, cy + 22, { size: 24, weight: 700, color: SC.gold });
+          cy += 30;
+          c.nameLines.forEach((line) => { cy += 42; text(line, cx + 104, cy, { size: 42, weight: 400, family: 'display' }); });
+          cy += 8;
+          c.detailLines.forEach((line) => { cy += 30; text(line, cx + 104, cy - 4, { size: 23, weight: 500, color: SC.dim }); });
+        });
+        y += rowH + 16;
+      }
+      y += 24;
+    }
+
+    // Final standings: everyone, reading down two columns
+    y = heading('FINAL STANDINGS', y);
+    const colW = (CW - 24) / 2;
+    const perCol = Math.ceil(order.length / 2);
+    const rowH = 58;
+    text('POTTED / SHOTS', M + CW, y - 10, { size: 18, weight: 700, color: SC.faint, align: 'right' });
+    order.forEach((p, i) => {
+      const col = i < perCol ? 0 : 1;
+      const row = col ? i - perCol : i;
+      const rx = M + col * (colW + 24);
+      const ry = y + row * rowH;
+      const win = i === 0;
+      box(rx, ry, colW, rowH - 8, 14, win ? 'rgba(245, 197, 66, 0.16)' : SC.card);
+      text(win ? '🏆' : ordinal(i + 1), rx + 44, ry + 35, { size: 22, weight: 700, color: win ? SC.gold : SC.dim, align: 'center' });
+      const score = `${p.pots}/${p.shots}`;
+      const sw = width(score, 24, 600);
+      text(clip(p.name.toUpperCase(), colW - 100 - sw - 20, 36, 400, 'display'), rx + 86, ry + 38, { size: 36, weight: 400, family: 'display', color: win ? SC.gold : SC.chalk });
+      text(score, rx + colW - 20, ry + 35, { size: 24, weight: 600, color: SC.dim, align: 'right' });
+    });
+    y += perCol * rowH + 36;
+
+    // Footer
+    const home = `${location.host}${location.pathname.replace(/\/(index\.html)?$/, '')}`;
+    text(`Scored with Killer  ·  ${home}`, SHARE_W / 2, y + 26, { size: 24, weight: 500, color: SC.faint, align: 'center' });
+    return Math.ceil(y + 72);
+  }
+
   function renderRecap() {
     const stats = gameStats();
     const w = byId(S.winner) || S.players.find(isAlive);
@@ -1347,6 +1605,7 @@
               <thead><tr><th></th><th class="st-name">Player</th><th>Potted</th><th>Extra</th><th class="st-wide">Streak</th><th>Out Rd</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>`}
+        <div class="recap-share">${shareButton('Share results')}<p>One image with the winner, awards and standings</p></div>
       </section>`;
   }
 
@@ -2112,7 +2371,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults'];
 
   app.addEventListener('click', (e) => {
     if (!WATCH && e.target.closest('.setup .wordmark')) { modeTap(); return; }
@@ -2176,6 +2435,7 @@
       case 'recapBack': view = 'main'; render(); window.scrollTo(0, 0); break;
       case 'tabAwards': recapTab = 'awards'; render(); break;
       case 'tabStandings': recapTab = 'standings'; render(); break;
+      case 'shareResults': shareResults(t); break;
     }
   });
 
