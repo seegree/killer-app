@@ -1431,9 +1431,13 @@
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
           ${share ? `
+            <div class="share-grid">
+            <div class="share-left">
             <div class="share-qr${tvSetupOpen ? ' mini' : ''}">${qrSvg(shareLink())}</div>
             <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
             <p class="share-status ${shareStatus}">${status}</p>
+            </div>
+            <div class="share-right">
             <div class="share-actions">
               <button class="btn btn-brass" data-sheet="copyLink">Copy link</button>
               ${navigator.share ? '<button class="btn btn-ghost" data-sheet="sendLink">📤 Send…</button>' : ''}
@@ -1456,7 +1460,9 @@
                 ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
               </div>` : ''}
 
-            <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>`
+            <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>
+            </div>
+            </div>`
           : `
             <p class="sheet-note">Show this game live on everyone’s phones, or on a TV. Viewers get a link and can’t change anything.</p>
             <button class="sheet-btn primary" data-sheet="startShare">📡 Start sharing</button>`}
@@ -1510,7 +1516,7 @@
         </div>`;
     } else {
       sheet.innerHTML = `
-        <div class="sheet-body">
+        <div class="sheet-body menu-body">
           <div class="sheet-head">
             <h3 class="sheet-title">Menu</h3>
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>

@@ -434,6 +434,9 @@ kbd {
   white-space: nowrap;
 }
 .clock-actions .ca-go { background: var(--green); border-color: transparent; color: #06140d; }
+/* Paused with spare height (e.g. sideways phones): even gaps above, between and below */
+.now-felt:has(.clock-actions) .now-label { margin-top: auto; }
+.now-felt:has(.clock-actions) .clock-actions { margin-top: auto; margin-bottom: auto; }
 /* Leave room above the bar whenever the clock is showing */
 .now-felt:has(.clock-bar) { padding-bottom: 42px; }
 body.tv .now-felt:has(.clock-bar) { padding-bottom: 50px; }
@@ -1488,7 +1491,7 @@ body.watch .pc:active { transform: none; }
   body:not(.tv) .left { display: contents; }
   body:not(.tv) .now { grid-area: now; display: flex; min-height: 0; padding: 6px; border-radius: 18px; }
   body:not(.tv) .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4px 12px 10px; border-radius: 13px; }
-  body:not(.tv) .now-felt:has(.clock-bar) { padding-bottom: 20px; }
+  body:not(.tv) .now-felt:has(.clock-bar) { padding-bottom: 24px; }
   body:not(.tv) .now-label { font-size: max(10px, 3vh); }
   body:not(.tv) .now-name { font-size: calc(min(18cqi, 30vh) * var(--fit, 1)); margin: 0 0 1vh; }
   body:not(.tv) .now-status { font-size: max(20px, 8vh); }
@@ -1498,7 +1501,8 @@ body.watch .pc:active { transform: none; }
   body:not(.tv) .clock-bar { height: 8px; }
   body:not(.tv) .clock-actions { margin-top: 1.5vh; }
   body:not(.tv) .clock-actions button { min-height: 40px; font-size: 14px; }
-  body:not(.tv) .board { grid-area: board; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: 8px; }
+  body:not(.tv) .board { grid-area: board; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 10px 4px 4px; }
+  body:not(.tv) .now { box-shadow: none; }
   body:not(.tv) .board-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
   body:not(.tv) .pc { min-height: 40px; padding: 3px 6px 3px 10px; border-radius: 10px; }
   body:not(.tv) .pc-name { font-size: calc(19px * var(--nfit, 1)); }
@@ -1561,5 +1565,23 @@ body.watch .pc:active { transform: none; }
   .ut-clock.idle, .ut-clock.paused { font-size: 9vh; }
   .ut-bar { grid-column: 2; grid-row: 4; width: 100%; height: 10px; }
   .ut-hint { bottom: calc(var(--safe-b) + 8px); font-size: 12px; }
+}
+
+/* Sideways phones: panels use the width instead of the height */
+@media (orientation: landscape) and (max-height: 600px) {
+  #sheet { width: min(760px, calc(100vw - 20px)); max-height: calc(100dvh - 16px); margin: auto; }
+  .sheet-body { padding: 14px 16px 16px; }
+  .sheet-head { margin: -14px -16px 10px; padding: 14px 16px 8px; }
+  .sheet-title { font-size: 32px; }
+  .menu-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .menu-body > .sheet-head, .menu-body > form, .menu-body > .keys, .menu-body > .sheet-note { grid-column: 1 / -1; }
+  .menu-body .sheet-btn { margin-top: 8px; padding: 10px 14px; }
+  .share-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: start; }
+  .share-left { width: min(230px, 38vw); text-align: center; }
+  .share-left .share-qr, .share-left .share-qr.mini { width: min(180px, 42vh); margin-top: 0; padding: 7px; }
+  .share-code { font-size: min(46px, 11vh); }
+  .share-right .sheet-note { margin-top: 8px; }
+  .share-right .tv-setup-toggle { margin-top: 10px; }
+  .who-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
 
