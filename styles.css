@@ -1500,6 +1500,9 @@ body.watch .pc:active { transform: none; }
   body:not(.tv) .clock { font-size: max(18px, 7vh); top: 4px; right: 6px; }
   body:not(.tv) .clock-bar { height: 8px; }
   body:not(.tv) .clock-actions { margin-top: 1.5vh; }
+  /* Same spacing paused or not, so the name never jumps when the clock pauses */
+  body:not(.tv) .now-felt .now-label { margin-top: auto; }
+  body:not(.tv) .now-felt .now-next, body:not(.tv) .now-felt .clock-actions { margin-top: auto; margin-bottom: auto; min-height: 40px; align-items: center; }
   body:not(.tv) .clock-actions button { min-height: 40px; font-size: 14px; }
   body:not(.tv) .board { grid-area: board; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 10px 4px 4px; }
   body:not(.tv) .now { box-shadow: none; }
