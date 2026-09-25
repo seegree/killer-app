@@ -955,7 +955,7 @@
       <span class="nx">
         <span class="nx-label">${i ? 'Then' : 'Next'}</span>
         <span class="nx-name">${esc(x.name)}</span>${marks(x, 'xs')}
-      </span>`).join('<span class="nx-sep" aria-hidden="true"></span>');
+      </span>`).join('');
 
     app.innerHTML = `
       <section class="game">
