@@ -36,9 +36,12 @@
   const WATCH = (new URLSearchParams(location.search).get('watch') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || null;
   const WATCH_TV = !!WATCH && new URLSearchParams(location.search).has('tv');
   const SHARE_KEY = 'killer.share.v1';
-  // Where room sound plays while sharing: the operator's phone, or the TV display.
+  // Where room sound plays while sharing: the operator's phone, the TV display, or both.
   const ROOM_KEY = 'killer.room.v1';
-  let roomSound = (() => { try { return localStorage.getItem(ROOM_KEY) === 'tv' ? 'tv' : 'phone'; } catch (_) { return 'phone'; } })();
+  const ROOM_TARGETS = ['phone', 'tv', 'both'];
+  const roomTarget = (t) => (ROOM_TARGETS.includes(t) ? t : 'phone');
+  const tvGetsSound = (t) => t === 'tv' || t === 'both';
+  let roomSound = (() => { try { return roomTarget(localStorage.getItem(ROOM_KEY)); } catch (_) { return 'phone'; } })();
   let remoteSound = { on: false, target: 'phone' }; // TV display: the operator's sound settings
   let tvSoundEnabled = false; // TV display: someone clicked to allow sound
   let tvSetupOpen = false;
@@ -1459,9 +1462,11 @@
                   <div class="seg seg-sm" role="radiogroup" aria-label="Room sound plays on">
                     <button role="radio" class="${roomSound === 'phone' ? 'on' : ''}" aria-checked="${roomSound === 'phone'}" data-sheet="roomPhone">This phone</button>
                     <button role="radio" class="${roomSound === 'tv' ? 'on' : ''}" aria-checked="${roomSound === 'tv'}" data-sheet="roomTv">TV screen</button>
+                    <button role="radio" class="${roomSound === 'both' ? 'on' : ''}" aria-checked="${roomSound === 'both'}" data-sheet="roomBoth">Both</button>
                   </div>
                 </div>
                 ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
+                ${roomSound === 'both' ? '<p class="sheet-note">Plays on this phone and the TV screen. Click the TV screen once to allow sound there.</p>' : ''}
               </div>` : ''}
 
             <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>
@@ -1534,7 +1539,7 @@
           <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
-          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && roomSound === 'tv' && soundOn ? 'Playing on the TV screen (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
+          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && soundOn && roomSound !== 'phone' ? (roomSound === 'tv' ? 'Playing on the TV screen' : 'Playing here and on the TV screen') + ' (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -1582,8 +1587,8 @@
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
-      case 'roomPhone': case 'roomTv':
-        roomSound = b.dataset.sheet === 'roomTv' ? 'tv' : 'phone';
+      case 'roomPhone': case 'roomTv': case 'roomBoth':
+        roomSound = { roomPhone: 'phone', roomTv: 'tv', roomBoth: 'both' }[b.dataset.sheet];
         try { localStorage.setItem(ROOM_KEY, roomSound); } catch (_) { /* ignore */ }
         queuePublish();
         renderSheet();
@@ -1610,13 +1615,14 @@
     queuePublish();
   }
 
-  // Only one device plays room sound. Viewers' phones never do; the TV display does only
-  // when the operator sends sound there (and someone has clicked to allow it).
+  // Room sound plays on the operator's phone, the TV display, or both. Viewers' phones never
+  // play it; the TV display does only when the operator sends sound there (and someone has
+  // clicked to allow it).
   function soundHere() {
-    if (WATCH) return WATCH_TV && tvSoundEnabled && remoteSound.on && remoteSound.target === 'tv';
+    if (WATCH) return WATCH_TV && tvSoundEnabled && remoteSound.on && tvGetsSound(remoteSound.target);
     return soundOn && !(share && roomSound === 'tv');
   }
-  const tvNeedsSoundClick = () => WATCH_TV && remoteSound.on && remoteSound.target === 'tv'
+  const tvNeedsSoundClick = () => WATCH_TV && remoteSound.on && tvGetsSound(remoteSound.target)
     && !(tvSoundEnabled && actx && actx.state === 'running');
 
   // Browsers only allow audio after a tap, which every sound here follows.
@@ -2253,7 +2259,7 @@
     const { clock, room, ...game } = state;
     S = { ...freshState(), ...game, tv: S.tv };
     applyRemoteClock(clock);
-    remoteSound = room ? { on: !!room.sound, target: room.target === 'tv' ? 'tv' : 'phone' } : { on: false, target: 'phone' };
+    remoteSound = room ? { on: !!room.sound, target: roomTarget(room.target) } : { on: false, target: 'phone' };
     remote.status = 'live';
     if (!Array.isArray(S.log)) S.log = [];
     if (S.log.length < prevLog.length) clearResult(false); // the scorekeeper pressed Undo
