@@ -1465,7 +1465,7 @@
               <button class="btn btn-brass" data-sheet="copyLink">Copy link</button>
               ${navigator.share ? '<button class="btn btn-ghost" data-sheet="sendLink">📤 Send…</button>' : ''}
             </div>
-            <p class="sheet-note">Everyone scans this to watch on their phone. It’s view-only and always silent.</p>
+            <p class="sheet-note">Everyone scans this to watch on their phone. It’s view-only${roomSound === 'everyone' ? '. Party mode is on, so they can tap to join the room sound.' : ' and silent (apart from their own turn alerts).'}</p>
 
             <button class="tv-setup-toggle${tvSetupOpen ? ' open' : ''}" data-sheet="tvSetup" aria-expanded="${tvSetupOpen}">📺 Set up a TV screen <span aria-hidden="true">⌄</span></button>
             ${tvSetupOpen ? `
