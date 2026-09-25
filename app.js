@@ -1176,7 +1176,7 @@
         continue;
       }
       if (e.a === 'extra') {
-        if (st && e.l === 2) st.comeback = true; // went from last life back to two
+        if (st && e.l === 2 && st.results.includes('miss')) st.comeback = true; // missed down to their last life, then earned one back
         if (e.late) {
           lastExtras++;
           if (st && lastExtras >= 2) st.hatTrick = true;
@@ -1186,10 +1186,10 @@
         continue;
       }
       if (st) {
-        const startLives = (e.a === 'miss' ? e.l + 1 : e.l) - extras;
+        const turnStartLives = (e.a === 'miss' ? e.l + 1 : e.l) - extras;
         st.turns++;
         st.results.push(e.a);
-        if (startLives === 1) st.edgeTurns++;
+        if (turnStartLives === 1) st.edgeTurns++;
         if (extras >= 2) st.hatTrick = true;
         if (e.a === 'made') {
           st.streak++;
@@ -1225,21 +1225,25 @@
     meltdownPots: 3, // potted this many before collapsing
   };
 
-  // How a knocked-out player collapsed: missed their last 3 turns, or 3 of their last 4.
-  function meltdown(st) {
+  // How a knocked-out player collapsed: missed as many turns in a row as the game's starting
+  // lives (their last 3 in Classic, last 2 in Blitz), or in Classic, 3 of their last 4.
+  function meltdown(st, lives) {
     if (st.p.lives > 0) return null;
     const r = st.results;
-    const last3 = r.slice(-3);
+    const lastRun = r.slice(-lives);
     const last4 = r.slice(-4);
     let window = 0;
-    if (last3.length === 3 && last3.every((a) => a === 'miss')) window = 3;
-    else if (last4.length === 4 && last4.filter((a) => a === 'miss').length === 3) window = 4;
+    if (lastRun.length === lives && lastRun.every((a) => a === 'miss')) window = lives;
+    else if (lives === 3 && last4.length === 4 && last4.filter((a) => a === 'miss').length === 3) window = 4;
     if (!window) return null;
     const before = r.slice(0, -window).filter((a) => a === 'made').length;
     return before >= AWARD_MIN.meltdownPots ? { before, window } : null;
   }
 
   function computeAwards(stats) {
+    // The game's own starting lives (not this phone's setting, so watchers' recaps match).
+    // In Sudden death (1 life) a few awards stop meaning anything, so they sit out.
+    const L = S.startLives || START_LIVES;
     const all = [...stats.values()];
     const list = [];
     // Everyone tied for the top value, if it clears the minimum.
@@ -1258,7 +1262,8 @@
     const runnerUp = S.outOrder.length > 1 && out(S.outOrder[S.outOrder.length - 1]);
     if (runnerUp) add('🥈', 'So Close', [runnerUp], () => 'Last one knocked out');
     const champ = S.winner && out(S.winner);
-    if (champ && champ.p.lives === 1) add('⚰️', 'Dead Man Walking', [champ], () => 'Won it on their last life');
+    if (champ && L > 1 && champ.p.lives === 1) add('⚰️', 'Dead Man Walking', [champ], () => 'Won it on their last life');
+    if (champ && L > 1 && champ.p.misses === 0) add('🧼', 'Flawless', [champ], () => 'Won without a single miss');
 
     const fire = top((st) => st.best, AWARD_MIN.onFire);
     add('🔥', 'On Fire', fire, (st) => `${st.best} made in a row`);
@@ -1268,23 +1273,25 @@
 
     const pct = (st) => (st.p.shots >= AWARD_MIN.sharpshooterShots ? st.p.pots / st.p.shots : 0);
     // Tied players share a percentage but not necessarily the same counts.
-    add('🎯', 'Sharpshooter', top(pct, 0.01), (st, shared) => (shared
+    if (L > 1) add('🎯', 'Sharpshooter', top(pct, 0.01), (st, shared) => (shared
       ? `${Math.round(pct(st) * 100)}% potted`
       : `${st.p.pots} of ${st.p.shots} potted (${Math.round(pct(st) * 100)}%)`));
     add('🐈‍⬛', 'Nine Lives', top((st) => st.p.extras, AWARD_MIN.nineLives), (st) => `${st.p.extras} extra lives`);
     add('🎩', 'Hat Trick', all.filter((st) => st.hatTrick), () => 'Potted 3 in one shot');
     add('🧟', 'Comeback Kid', all.filter((st) => st.comeback), () => 'Earned a life back while on their last');
-    add('😰', 'Living on the Edge', top((st) => st.edgeTurns, AWARD_MIN.edge), (st) => `${st.edgeTurns} turns on their last life`);
+    if (L > 1) add('😰', 'Living on the Edge', top((st) => st.edgeTurns, AWARD_MIN.edge), (st) => `${st.edgeTurns} turns on their last life`);
     add('😈', 'Toughest Leave', top((st) => st.leaves, AWARD_MIN.toughestLeave), (st) => `${st.leaves} players out right after their turn`);
     // Meltdown: the best run that ended in a collapse.
-    const melted = all.map((st) => ({ st, m: meltdown(st) })).filter((x) => x.m);
-    const bestRun = Math.max(0, ...melted.map((x) => x.m.before));
-    add('📉', 'Meltdown', melted.filter((x) => x.m.before === bestRun).map((x) => x.st), (st) => {
-      const m = meltdown(st);
-      return `Potted ${m.before}, then missed ${m.window === 3 ? 'their last 3' : '3 of their last 4'}`;
-    });
+    if (L > 1) {
+      const melted = all.map((st) => ({ st, m: meltdown(st, L) })).filter((x) => x.m);
+      const bestRun = Math.max(0, ...melted.map((x) => x.m.before));
+      add('📉', 'Meltdown', melted.filter((x) => x.m.before === bestRun).map((x) => x.st), (st) => {
+        const m = meltdown(st, L);
+        return `Potted ${m.before}, then missed ${m.window === 4 ? '3 of their last 4' : `their last ${m.window}`}`;
+      });
+    }
     add('🎱', 'Dems da Breaks', top((st) => st.breaks, AWARD_MIN.breaks), (st) => `Broke ${st.breaks} racks`);
-    add('🥶', 'Ice Cold', all.filter((st) => st.p.lives <= 0 && st.p.pots === 0), () => 'Out without potting a ball');
+    if (L > 1) add('🥶', 'Ice Cold', all.filter((st) => st.p.lives <= 0 && st.p.pots === 0), () => 'Out without potting a ball');
     return list;
   }
 
@@ -1327,7 +1334,7 @@
           <button class="btn btn-ghost btn-sm" data-do="recapBack">← Back</button>
           <div class="recap-title">
             <h1>Recap</h1>
-            <p>${S.players.length} players · ${shots} shots · won by <b>${esc(w ? w.name : '—')}</b></p>
+            <p>${MODE_ICON[S.startLives] ? `${MODE_ICON[S.startLives]} ${MODES[S.startLives]} · ` : ''}${S.players.length} players · ${shots} shots · won by <b>${esc(w ? w.name : '—')}</b></p>
           </div>
         </header>
         <div class="seg" role="tablist">
