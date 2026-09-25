@@ -1243,6 +1243,7 @@ body.watch .pc:active { transform: none; }
 .tv-setup .sheet-note { margin-top: 0; text-align: center; }
 .tv-setup .cs-row { flex-wrap: wrap; }
 .tv-setup .share-actions { margin-top: 10px; }
+.btn.copied { background: var(--green); border-color: transparent; color: #06140d; }
 .seg.seg-sm { width: auto; margin: 0; }
 .seg.seg-sm button { min-height: 40px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
 /* Four room-sound choices (party mode unlocked): a 2 × 2 grid across the whole row */

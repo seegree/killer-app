@@ -1462,7 +1462,7 @@
             </div>
             <div class="share-right">
             <div class="share-actions">
-              <button class="btn btn-brass" data-sheet="copyLink">Copy link</button>
+              <button class="btn btn-brass${copied === 'link' ? ' copied' : ''}" data-sheet="copyLink">${copied === 'link' ? '✓ Copied' : 'Copy link'}</button>
               ${navigator.share ? '<button class="btn btn-ghost" data-sheet="sendLink">📤 Send…</button>' : ''}
             </div>
             <p class="sheet-note">Everyone scans this to watch on their phone. It’s view-only${roomSound === 'everyone' ? '. Party mode is on, so they can tap to join the room sound.' : ' and silent (apart from their own turn alerts).'}</p>
@@ -1472,7 +1472,7 @@
               <div class="tv-setup">
                 <div class="share-qr small">${qrSvg(watchLink(share.code, true))}</div>
                 <p class="sheet-note">Scan this with the device for the TV: a laptop, a tablet, or a phone turned sideways. It shows the big-screen board, with its own QR code so people can join.</p>
-                <div class="share-actions"><button class="btn btn-ghost" data-sheet="copyTvLink">Copy TV link</button></div>
+                <div class="share-actions"><button class="btn btn-ghost${copied === 'tv' ? ' copied' : ''}" data-sheet="copyTvLink">${copied === 'tv' ? '✓ Copied' : 'Copy TV link'}</button></div>
                 <div class="cs-row">
                   <span>Room sound plays on</span>
                   <div class="seg seg-sm" role="radiogroup" aria-label="Room sound plays on">
@@ -1609,7 +1609,7 @@
       case 'watch': openSheet({ type: 'watch' }); break;
       case 'startShare': startSharing(); break;
       case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
-      case 'copyLink': copyLink(shareLink()); break;
+      case 'copyLink': copyLink(shareLink(), 'link'); break;
       case 'pickMe': choosePlayer(b.dataset.name || ''); break;
       case 'someoneElse': sheetMode = { type: 'who' }; renderSheet(); break;
       case 'toggleParty':
@@ -1620,7 +1620,7 @@
         break;
       case 'toggleAlertSound': me.sound = !me.sound; saveMe(); renderSheet(); if (me.sound) { unlockAudio(); sfx.deck(); } break;
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
-      case 'copyTvLink': copyLink(watchLink(share.code, true)); break;
+      case 'copyTvLink': copyLink(watchLink(share.code, true), 'tv'); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
       case 'leadLess': case 'leadMore':
         setSyncLead(syncLead + (b.dataset.sheet === 'leadMore' ? LEAD_STEP : -LEAD_STEP));
@@ -2347,15 +2347,35 @@
     toast('Stopped sharing');
   }
 
-  function copyLink(link) {
-    const done = () => toast('Link copied');
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, () => selectLink());
-    else selectLink();
+  // The Copy button itself says "✓ Copied" for a moment (a toast would sit behind the open panel).
+  // Pages that can't use the clipboard API (like the local test server) copy through a hidden
+  // text box instead; if even that fails, the link pops up to copy by hand.
+  let copied = null; // which Copy button just worked: 'link' or 'tv'
+  function copyLink(link, key) {
+    const done = () => {
+      copied = key;
+      const b = sheet.querySelector(`[data-sheet="${key === 'tv' ? 'copyTvLink' : 'copyLink'}"]`);
+      if (b) { b.textContent = '✓ Copied'; b.classList.add('copied'); }
+      clearTimeout(copyLink.timer);
+      copyLink.timer = setTimeout(() => { copied = null; if (sheet.open) renderSheet(); }, 1600);
+    };
+    const fallback = () => (copyWithSelection(link) ? done() : window.prompt('Copy this link:', link));
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, fallback);
+    else fallback();
   }
 
-  function selectLink() {
-    const input = sheet.querySelector('.share-link input');
-    if (input) { input.focus(); input.select(); }
+  function copyWithSelection(text) {
+    const box = document.createElement('textarea');
+    box.value = text;
+    box.setAttribute('readonly', '');
+    box.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+    (sheet.open ? sheet : document.body).appendChild(box); // inside the open panel, so it can take the selection
+    box.select();
+    box.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { /* not supported */ }
+    box.remove();
+    return ok;
   }
 
   // Watchers: show the same result stamps the scorekeeper sees, worked out from the new shots.
