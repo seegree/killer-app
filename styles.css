@@ -1586,5 +1586,10 @@ body.watch .pc:active { transform: none; }
   .share-right .sheet-note { margin-top: 8px; }
   .share-right .tv-setup-toggle { margin-top: 10px; }
   .who-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  /* OUT stamp: the circled X beside the name, so it fits the short screen */
+  .stamp { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 4vh; text-align: left; }
+  .stamp-x { grid-row: 1 / span 2; width: 50vh; height: 50vh; }
+  .stamp-name { font-size: min(84px, 16vh); margin-top: 0; max-width: 55vw; overflow-wrap: anywhere; }
+  .stamp-out { font-size: min(150px, 30vh); }
 }
 
