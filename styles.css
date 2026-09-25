@@ -194,7 +194,7 @@ kbd {
 .hint.notice { color: var(--gold); font-weight: 600; }
 .hint.notice b { color: var(--chalk); }
 
-.roster-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 26px 0 12px; }
+.roster-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 0 12px; }
 .roster-head h2 {
   margin: 0;
   font-family: var(--display);
@@ -276,7 +276,7 @@ kbd {
 }
 .rdel:hover { background: rgba(229, 72, 77, 0.16); color: var(--red); }
 
-.empty { text-align: center; padding: 28px 12px; color: var(--chalk-dim); }
+.empty { text-align: center; padding: 12px; color: var(--chalk-dim); }
 .empty p { margin: 14px 0 18px; }
 .empty-rack { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
 .empty-rack span { display: flex; gap: 3px; }
@@ -293,12 +293,14 @@ kbd {
 /* ------------------------------------------------------------------ game layout (mobile first) */
 .game { min-height: 100dvh; display: flex; flex-direction: column; }
 .topbar {
-  display: flex;
+  /* Three columns so the left/out pill sits dead centre whatever is on either side */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: calc(var(--safe-t) + 10px) var(--pad) 10px;
 }
+.topbar > :last-child { justify-self: end; }
 .brand-sm { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 28px; letter-spacing: 0.06em; padding-top: 3px; }
 .pill {
   padding: 7px 12px;
@@ -332,7 +334,7 @@ kbd {
   position: relative;
   overflow: hidden;
   border-radius: 18px;
-  padding: 14px 16px 14px;
+  padding: 18px 16px 14px;
   text-align: center;
   background: radial-gradient(ellipse 90% 80% at 50% 0%, var(--felt-hi), var(--felt) 50%, var(--felt-lo));
   box-shadow: inset 0 0 44px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.45);
@@ -434,15 +436,32 @@ kbd {
   white-space: nowrap;
 }
 .clock-actions .ca-go { background: var(--green); border-color: transparent; color: #06140d; }
-/* Paused with spare height (e.g. sideways phones): even gaps above, between and below */
-.now-felt:has(.clock-actions) .now-label { margin-top: auto; }
-.now-felt:has(.clock-actions) .clock-actions { margin-top: auto; margin-bottom: auto; }
+/* Tablets, laptops and TVs: the paused buttons take exactly the Next/Then line's space (same font
+   size, so the same em heights: its margin plus a 1.2em line), centred between the lives and the
+   clock bar, so the card never changes height when the clock pauses. --below is the gap the bar leaves. */
+@media (min-width: 521px) and (min-height: 601px) {
+  .now-felt .clock-actions {
+    --slot: calc(0.45em + 1.2em);
+    --b: 46px;
+    --below: 22px;
+    font-size: 30px;
+    height: var(--b);
+    margin-top: calc((var(--slot) + var(--below) - var(--b)) / 2);
+    margin-bottom: calc((var(--slot) - var(--below) - var(--b)) / 2);
+  }
+  .now-felt .clock-actions button { min-height: var(--b); }
+  body.tv .now-felt .clock-actions { --slot: calc(0.2em + 1.2em); --b: 64px; --below: 30px; font-size: clamp(40px, 4.8vw, 100px); }
+}
+@media (min-width: 960px) and (min-height: 601px) {
+  body:not(.tv) .now-felt .clock-actions { font-size: 32px; }
+}
 /* Leave room above the bar whenever the clock is showing */
-.now-felt:has(.clock-bar) { padding-bottom: 42px; }
+.now-felt:has(.clock-bar) { padding-bottom: 34px; }
 body.tv .now-felt:has(.clock-bar) { padding-bottom: 50px; }
 .clock-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; background: rgba(0, 0, 0, 0.35); }
 .clock-bar i { display: block; height: 100%; background: var(--chalk); opacity: 0.7; transform-origin: left center; transition: transform 0.1s linear; }
 .clock-bar.warn i { background: var(--red); opacity: 1; }
+.clock-bar.ghost { background: none; }
 body.tv .clock-bar { height: 20px; }
 
 /* Final 5 seconds: a red countdown takes over the whole chalkboard, the frame pulses red,
@@ -505,7 +524,7 @@ body.watch .clock-final { cursor: default; }
 .cs-stepper { display: flex; align-items: center; gap: 4px; }
 .cs-stepper.off { opacity: 0.35; }
 .cs-stepper button { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); font-size: 20px; font-weight: 700; }
-.cs-stepper b { min-width: 3.4em; text-align: center; font-family: var(--display); font-weight: 400; font-size: 24px; padding-top: 3px; }
+.cs-stepper b { min-width: 2.6em; text-align: center; font-family: var(--display); font-weight: 400; font-size: 24px; padding-top: 3px; }
 .cs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 8px 4px; font-weight: 700; }
 .sheet-btn.primary { background: rgba(47, 181, 106, 0.18); border-color: rgba(47, 181, 106, 0.5); }
 
@@ -547,7 +566,9 @@ body.watch .clock-final { cursor: default; }
   .nx-sep { display: none; }
   /* Paused: fill the same slot as the stacked Next/Then (so nothing below jumps), with the
      buttons centred between the lives and the clock bar, and small enough to fit inside the card */
-  body:not(.tv) .now-felt .clock-actions { margin-top: 14px; min-height: 68px; align-items: flex-end; gap: 6px; }
+  body:not(.tv) .now-felt .clock-actions { box-sizing: border-box; margin-top: 14px; min-height: 68px; padding-bottom: 4px; align-items: flex-end; gap: 6px; }
+  /* Long names clear the clock chip in the corner */
+  .now-felt:has(.clock) .now-name { margin-top: 14px; }
   body:not(.tv) .clock-actions button { min-width: 0; padding: 0 4px; font-size: clamp(13px, 4cqi, 18px); }
 }
 .mk.xs { gap: 0.2em; }
@@ -765,6 +786,7 @@ body.tv .pill b { font-size: 20px; }
 /* The poster has its own ink background, so the page goes flat ink to match. */
 body.win::before { display: none; }
 .winner {
+  overflow-x: clip;
   min-height: 100dvh;
   display: flex;
   align-items: center;
@@ -1151,6 +1173,7 @@ body.watch .pc:active { transform: none; }
   font-size: 64px;
   line-height: 1;
   letter-spacing: 0.18em;
+  text-indent: 0.18em; /* balances the trailing letter-space so the code centres */
   padding-top: 6px;
   color: var(--gold);
 }
@@ -1202,11 +1225,12 @@ body.watch .pc:active { transform: none; }
 }
 .tv-setup-toggle span { transition: transform 0.2s ease; }
 .tv-setup-toggle.open span { transform: rotate(180deg); }
-.tv-setup { margin-top: 10px; padding: 14px 12px 6px; border-radius: 14px; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); }
+.tv-setup { margin-top: 10px; padding: 14px 12px 14px; border-radius: 14px; background: rgba(0, 0, 0, 0.22); border: 1px solid var(--line); }
 .tv-setup .sheet-note { margin-top: 0; text-align: center; }
 .tv-setup .cs-row { flex-wrap: wrap; }
+.tv-setup .share-actions { margin-top: 10px; }
 .seg.seg-sm { width: auto; margin: 0; }
-.seg.seg-sm button { min-height: 36px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+.seg.seg-sm button { min-height: 40px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
 
 /* TV display: join QR in the top bar */
 .tv-join { display: flex; align-items: center; gap: 10px; }
@@ -1252,7 +1276,10 @@ body.watch .pc:active { transform: none; }
   }
   body.tv .left { position: static; display: flex; min-height: 0; }
   body.tv .now { flex: 1; display: flex; padding: 6px; border-radius: 18px; min-height: 0; }
-  body.tv .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4px 12px 10px; border-radius: 13px; }
+  body.tv .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 10px 12px 10px; border-radius: 13px; }
+  body.tv .now-felt:has(.clock-bar) { padding-bottom: 16px; }
+  body.tv .now-felt .now-label { margin-top: auto; }
+  body.tv .now-felt .now-next, body.tv .now-felt .clock-actions { margin-top: auto; margin-bottom: auto; min-height: 40px; align-items: center; }
   body.tv .now-label { font-size: max(10px, 3vh); }
   body.tv .now-name { font-size: calc(min(18cqi, 33vh) * var(--fit, 1)); margin: 0 0 1vh; }
   body.tv .now-status { font-size: max(20px, 9vh); }
@@ -1270,7 +1297,6 @@ body.watch .pc:active { transform: none; }
   .tv-join span { font-size: 10px; }
   .tv-join b { font-size: 16px; }
 }
-}
 
 /* Start screen: a quiet way in for watchers */
 .watch-entry {
@@ -1284,7 +1310,7 @@ body.watch .pc:active { transform: none; }
   color: var(--chalk-dim);
 }
 .watch-entry:hover { color: var(--chalk); }
-.watch-form { display: flex; gap: 10px; margin-top: 4px; }
+.watch-form { display: flex; gap: 10px; margin-top: 10px; }
 .watch-form input {
   flex: 1;
   min-width: 0;
@@ -1494,8 +1520,8 @@ body.watch .pc:active { transform: none; }
   }
   body:not(.tv) .left { display: contents; }
   body:not(.tv) .now { grid-area: now; display: flex; min-height: 0; padding: 6px; border-radius: 18px; }
-  body:not(.tv) .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 4px 12px 10px; border-radius: 13px; }
-  body:not(.tv) .now-felt:has(.clock-bar) { padding-bottom: 24px; }
+  body:not(.tv) .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 10px 12px 10px; border-radius: 13px; }
+  body:not(.tv) .now-felt:has(.clock-bar) { padding-bottom: 18px; }
   body:not(.tv) .now-label { font-size: max(10px, 3vh); }
   body:not(.tv) .now-name { font-size: calc(min(18cqi, 30vh) * var(--fit, 1)); margin: 0 0 1vh; }
   body:not(.tv) .now-status { font-size: max(20px, 8vh); }

@@ -927,7 +927,9 @@
       <button class="clock${cv.paused ? ' paused' : ''}${cv.warn ? ' warn' : ''}${cv.time ? ' time' : ''}" data-do="clock" aria-label="${paused ? 'Resume shot clock' : 'Pause shot clock'}"><span id="clockNum">${cv.text}</span></button>
       <button class="clock-final" data-do="clock" aria-label="Pause shot clock" tabindex="-1"><span class="${cv.warn ? 'beat' : ''}" id="clockFinal">${cv.warn ? Math.ceil(cv.left / 1000) : ''}</span>${WATCH ? '' : '<small>Tap to pause</small>'}</button>
       <div class="clock-bar${cv.barWarn ? ' warn' : ''}" aria-hidden="true"><i id="clockBar" style="transform:scaleX(${cv.scale})"></i></div>`
-      : clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '';
+      : (clockOn() && heldIdx < 0 ? '<div class="clock idle" aria-label="No shot clock on the break">Break</div>' : '')
+        // An empty bar keeps the card the same height while a stamp shows or on the break
+        + (clockOn() ? '<div class="clock-bar ghost" aria-hidden="true"></div>' : '');
 
     const cards = board.map((x) => {
       const isCur = x.id === p.id;
