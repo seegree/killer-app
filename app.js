@@ -2942,6 +2942,10 @@
   // between shots isn't bumped. [away for more than, how far down the line is asked]
   const BACKUP_STAGES = [[60000, 0], [90000, 1]];
   const EVERYONE_MS = 150000;
+  // With a TV display connected, its "Take over scoring here" button (shown at 30 s) gets a head
+  // start: the phone prompts all wait one more minute (first in line at 2 min instead of 1).
+  const TV_HEAD_START_MS = 60000;
+  const stageDelay = () => (watchers.some((w) => w.tv) ? TV_HEAD_START_MS : 0);
   const myWatchId = () => (window.killerLive ? window.killerLive.myId() : null);
   const myEntry = () => watchers.find((w) => w.id === myWatchId());
   const byJoin = (a, b) => (a.at || 0) - (b.at || 0) || String(a.id).localeCompare(String(b.id));
@@ -2951,9 +2955,9 @@
   function backupAsked() {
     if (!WATCH || WATCH_TV || !isAway()) return false;
     const idx = watchLine().findIndex((w) => w.id === myWatchId());
-    return idx >= 0 && BACKUP_STAGES.some(([ms, upTo]) => awayFor() > ms && idx <= upTo);
+    return idx >= 0 && BACKUP_STAGES.some(([ms, upTo]) => awayFor() > ms + stageDelay() && idx <= upTo);
   }
-  const everyoneMayTake = () => WATCH && !WATCH_TV && awayFor() > EVERYONE_MS && !(myEntry() && myEntry().declined);
+  const everyoneMayTake = () => WATCH && !WATCH_TV && awayFor() > EVERYONE_MS + stageDelay() && !(myEntry() && myEntry().declined);
 
   let backupShown = false;
   function checkBackup() {
