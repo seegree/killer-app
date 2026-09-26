@@ -1018,6 +1018,7 @@
       <aside class="join-panel" aria-label="Scan to watch this game on your phone">
         <div class="jp-title">Scan to watch</div>
         <div class="jp-qr">${qrSvg(watchLink(joinCode, false))}</div>
+        <div class="jp-hint">No camera? In Killer, tap <b>Watch a game</b> and enter:</div>
         <div class="jp-code">${esc(joinCode)}</div>
         <div class="jp-note">Follow the game live on your phone</div>
         ${watchersBlock()}
