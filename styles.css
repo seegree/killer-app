@@ -1815,3 +1815,13 @@ body.tv:has(.join-panel) .topbar .tv-join { display: none; }
   body.tv .join-panel { display: none; }
   body.tv:has(.join-panel) .topbar .tv-join { display: flex; }
 }
+
+/* Big-QR layout on TV screens: the chalkboard is as tall as the "scan to watch" panel, so its
+   text grows to fill that height instead of floating in the middle. Next/Then and the paused
+   buttons share a font size (the pause layout sizes itself from it). */
+@media (min-height: 601px) {
+  body.tv .now-row .now-name { font-size: calc(clamp(64px, min(20cqi, 20vh), 260px) * var(--fit, 1)); }
+  body.tv .now-row .now-status { font-size: clamp(36px, 7vh, 96px); }
+  body.tv .now-row .now-next,
+  body.tv .now-row .now-felt .clock-actions { font-size: clamp(34px, 7vh, 100px); }
+}

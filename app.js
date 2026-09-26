@@ -67,6 +67,15 @@
   let remoteSound = { on: false, target: 'phone' }; // TV display: the operator's sound settings
   let tvSoundEnabled = false; // TV display: someone clicked to allow sound
   let tvSetupOpen = false;
+  // TV screens: the big "scan to watch" panel, or the small corner code with a full-width chalkboard.
+  // Each screen remembers (double-click the code, the ⋯ menu, or Q on a laptop to switch).
+  const TVQR_KEY = 'killer.tvqr.v1';
+  let bigQr = (() => { try { return localStorage.getItem(TVQR_KEY) !== 'small'; } catch (_) { return true; } })();
+  function toggleQr() {
+    bigQr = !bigQr;
+    try { localStorage.setItem(TVQR_KEY, bigQr ? 'big' : 'small'); } catch (_) { /* ignore */ }
+    render();
+  }
 
   // Viewers can pick which player they are to get their own turn alerts. Remembered by
   // name (so it carries across rematches) and per game code.
@@ -1004,7 +1013,7 @@
 
     // TV screens: a big "scan to watch" panel beside the chalkboard, so the room can join in
     const joinCode = tvOn() ? (WATCH || (share && share.code)) : null;
-    const joinPanel = joinCode ? `
+    const joinPanel = joinCode && bigQr ? `
       <aside class="join-panel" aria-label="Scan to watch this game on your phone">
         <div class="jp-title">Scan to watch</div>
         <div class="jp-qr">${qrSvg(watchLink(joinCode, false))}</div>
@@ -1020,7 +1029,7 @@
           ${tvOn()
             ? WATCH_TV
               ? `<div class="top-actions"><div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div><button class="icon-btn tv-more" data-do="tvMenu" aria-label="More options">⋯</button></div>`
-              : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
+              : `<div class="top-actions">${share && !bigQr ? `<div class="tv-join">${qrSvg(watchLink(share.code, false))}<span>Scan to watch<b>${esc(share.code)}</b></span></div>` : ''}<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button></div>`
             : WATCH
               ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">📺 TV</button>' : ''}<button class="btn btn-ghost btn-sm invite-btn" data-do="invite" aria-label="Invite people to watch"><span aria-hidden="true">📲</span><span class="invite-label">Invite</span></button><span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
               : `<div class="top-actions">
@@ -1075,7 +1084,7 @@
           </section>
         </div>
 
-        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
       </section>`;
   }
 
@@ -1768,6 +1777,7 @@
             <h3 class="sheet-title">Options</h3>
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
+          <button class="sheet-btn" data-sheet="qrSize">${bigQr ? '🔳 Smaller QR code<small>More room for the big board (double-click the code to switch too)</small>' : '🔳 Big QR code<small>A big “scan to watch” panel beside the chalkboard</small>'}</button>
           <button class="sheet-btn" data-sheet="takeoverAsk">🎱 Take over scoring…<small>Keep this game going from this device</small></button>
         </div>`;
       return;
@@ -2021,6 +2031,7 @@
         break;
       }
       case 'takeoverAsk': sheetMode = { type: 'takeover' }; renderSheet(); break;
+      case 'qrSize': closeSheet(); toggleQr(); break;
       case 'takeover': takeOver(b.dataset.name || ''); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
       case 'leadLess': case 'leadMore':
@@ -2520,6 +2531,10 @@
 
   const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults', 'invite', 'tvMenu', 'takeoverOpen'];
 
+  app.addEventListener('dblclick', (e) => {
+    if (tvOn() && e.target.closest('.join-panel, .tv-join')) toggleQr();
+  });
+
   app.addEventListener('click', (e) => {
     if (!WATCH && e.target.closest('.setup .wordmark')) { modeTap(); return; }
     const t = e.target.closest('button');
@@ -2675,6 +2690,7 @@
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
+    if (k === 'q' && tvOn() && (WATCH || share)) { e.preventDefault(); toggleQr(); return; }
     if (WATCH) {
       if (S.phase === 'playing' && canTV() && (k === 't' || (k === 'escape' && S.tv))) { e.preventDefault(); toggleTV(); }
       return;
