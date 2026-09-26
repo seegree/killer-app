@@ -44,12 +44,14 @@ window.killerLive = {
   myId: () => (auth.currentUser ? auth.currentUser.uid : null),
 
   // The state is stored as one JSON string: simpler than mapping it onto Firebase's key rules.
-  // `alive` is the scorekeeper's "still here" time. After a takeover, every update carries the
-  // claim ({ name, id }) so the room (and the old scorekeeper's phone) know who is scoring now.
-  async publish(code, state, claim) {
+  // `alive` is the scorekeeper's "still here" time. After a takeover, every update carries `scorer`
+  // ({ name, id }) so the room and the old scorekeeper's phone know who is scoring now. Only the
+  // takeover itself carries `claim`, the one thing the database rules accept from a new device.
+  async publish(code, state, scorer, takeover = false) {
     const owner = await uid();
     const rec = { owner, updated: serverTimestamp(), alive: serverTimestamp(), state: JSON.stringify(state) };
-    if (claim) rec.claim = { name: claim.name || '', id: claim.id, at: serverTimestamp() };
+    if (scorer) rec.scorer = { name: scorer.name || '', id: scorer.id, at: serverTimestamp() };
+    if (takeover) rec.claim = true;
     await set(gameRef(code), rec);
   },
 
@@ -71,7 +73,7 @@ window.killerLive = {
     await remove(gameRef(code));
   },
 
-  // Calls onMeta({ alive, claim }) on every change, onState(state) when the game itself changed
+  // Calls onMeta({ alive, scorer }) on every change, onState(state) when the game itself changed
   // (not on the scorekeeper's heartbeats), and onMissing() if the game doesn't exist or can't be read.
   watch(code, onState, onMissing, onMeta = () => {}) {
     let last = null;
@@ -80,7 +82,7 @@ window.killerLive = {
       (snap) => {
         const v = snap.val();
         if (!v || typeof v.state !== 'string') return onMissing();
-        onMeta({ alive: v.alive || 0, claim: v.claim || null });
+        onMeta({ alive: v.alive || 0, scorer: v.scorer || null });
         if (v.state === last) return;
         last = v.state;
         try { onState(JSON.parse(v.state)); } catch (_) { onMissing(); }

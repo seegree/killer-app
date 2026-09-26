@@ -42,6 +42,14 @@
   // browser's own saved game.
   const WATCH = (new URLSearchParams(location.search).get('watch') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || null;
   const WATCH_TV = !!WATCH && new URLSearchParams(location.search).has('tv');
+  // A watch link with &operator offers to take over scoring in one tap. The flag leaves the
+  // address straight away, so a reload, the history or a copied address bar can't fire it again.
+  let TAKE_ASK = !!WATCH && new URLSearchParams(location.search).has('operator');
+  if (TAKE_ASK) {
+    const u = new URL(location.href);
+    u.searchParams.delete('operator');
+    window.history.replaceState(null, '', u.pathname + u.search + u.hash); // (the app's own `history` is the Undo list)
+  }
   const SHARE_KEY = 'killer.share.v1';
   // Where room sound plays while sharing: the operator's phone, the TV display, or both.
   const ROOM_KEY = 'killer.room.v1';
@@ -1765,6 +1773,24 @@
       return;
     }
 
+    if (sheetMode.type === 'takeoverQuick') {
+      const name = me.codes[WATCH] || '';
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Take over?</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note${isAway() ? '' : ' warn'}">${isAway()
+            ? `The scorekeeper has been away for ${fmtAway(awayFor())}.`
+            : 'The scorekeeper still looks active.'}
+            This device takes over scoring for game ${esc(WATCH)} from the latest score${name ? `, as ${esc(name)}` : ''}. Everyone’s link keeps working.</p>
+          <button class="btn btn-start takeover-go" data-sheet="takeover" data-name="${esc(name)}">Take over</button>
+          <button class="link-btn" data-sheet="close">Just watch</button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'takeover') {
       const secs = Math.round(awayFor() / 1000);
       const names = S.players.map((p) => p.name).sort((a, b) => a.localeCompare(b));
@@ -2796,7 +2822,7 @@
 
   function applyMeta(meta) {
     remoteMeta.alive = meta.alive || 0;
-    const c = meta.claim;
+    const c = meta.scorer;
     const id = c && c.id ? c.id : '';
     if (remoteMeta.claimId === null) {
       // Joining: only mention a takeover that just happened
@@ -2818,7 +2844,7 @@
       if (!rec) throw new Error('missing');
       const { clock, room, sfx: stamped, ...game } = rec.state;
       const claim = { name, id: newCode() };
-      await live.publish(WATCH, { ...rec.state, sfx: [] }, claim);
+      await live.publish(WATCH, { ...rec.state, sfx: [] }, claim, true);
       localStorage.setItem(GAME_KEY, JSON.stringify({ state: { ...freshState(), ...game, tv: false }, history: [] }));
       localStorage.setItem(SHARE_KEY, JSON.stringify({ code: WATCH, claim }));
       if (clock) localStorage.setItem(CLOCK_KEY, JSON.stringify({ on: !!clock.on, secs: clock.secs || 30 }));
@@ -2837,12 +2863,13 @@
     const live = window.killerLive;
     if (!share || !live) return false;
     const rec = await live.fetch(share.code).catch(() => null);
-    // Moved only if someone else claimed it since this phone's own claim (if it had one)
-    if (!rec || !rec.claim || rec.owner === live.myId() || (share.claim && rec.claim.id === share.claim.id)) return false;
+    // Moved only if someone else took it over since this phone's own takeover (if it had one)
+    const by = rec && rec.scorer;
+    if (!by || !by.id || rec.owner === live.myId() || (share.claim && by.id === share.claim.id)) return false;
     const code = share.code;
     share = null;
     saveShare();
-    try { sessionStorage.setItem(MOVED_KEY, rec.claim.name || ''); } catch (_) { /* ignore */ }
+    try { sessionStorage.setItem(MOVED_KEY, by.name || ''); } catch (_) { /* ignore */ }
     location.replace(watchLink(code, false));
     return true;
   }
@@ -2946,6 +2973,13 @@
     if (S.log.length < prevLog.length) { clearResult(false); cancelPendingSfx(); } // the scorekeeper pressed Undo
     else if (wasLive) stampFromRemote(S.log.slice(prevLog.length));
     render();
+    // Opened with &operator: the one-tap take-over offer comes first
+    if (TAKE_ASK && S.players.length) {
+      TAKE_ASK = false;
+      askedWho = true;
+      openSheet({ type: 'takeoverQuick' });
+      return;
+    }
     // First time in this game: ask which player they are (skipped on the TV display).
     if (!WATCH_TV && !askedWho && !(WATCH in me.codes) && S.players.length && !sheet.open) {
       askedWho = true;

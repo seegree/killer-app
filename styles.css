@@ -1781,6 +1781,7 @@ body.tv .away-banner .btn { min-height: 56px; padding: 0 28px; font-size: clamp(
 @media (max-width: 420px) { .invite-label { display: none; } .invite-btn { padding: 0 10px; font-size: 18px; } } /* narrow phones: the icon alone fits beside Live */
 .sheet-note.warn { color: var(--gold); }
 .takeover-ask { margin: 14px 0 8px; font-weight: 700; }
+.takeover-go { margin-top: 14px; }
 
 /* TV screens: a big "scan to watch" panel beside the chalkboard (sideways phones keep the corner code) */
 .join-panel { display: none; }
