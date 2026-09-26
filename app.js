@@ -1020,7 +1020,7 @@
         <div class="jp-qr">${qrSvg(watchLink(joinCode, false))}</div>
         <div class="jp-code">${esc(joinCode)}</div>
         <div class="jp-note">Follow the game live on your phone</div>
-        ${watchingText() ? `<div class="jp-watching">${esc(watchingText())}</div>` : ''}
+        ${watchersBlock()}
       </aside>` : '';
 
     app.innerHTML = `
@@ -1881,6 +1881,7 @@
             <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
             <p class="share-status ${shareStatus}">${status}</p>
             ${watchingText() ? `<p class="share-watching">${esc(watchingText())}</p>` : ''}
+            ${backupName() ? `<p class="share-backup">🛟 ${esc(backupName())} is first in line to take over</p>` : ''}
             </div>
             <div class="share-right">
             <div class="share-actions">
@@ -2938,6 +2939,11 @@
   // anyone watching can take over from the away notice.
   let watchers = [];
   let stopWatchers = null;
+  // Test server only (never the live site): &demo adds a sample crowd to the watcher list, to see
+  // the TV with a room full of watchers. Nothing is written anywhere.
+  const DEMO_WATCHERS = !!WATCH && new URLSearchParams(location.search).has('demo') && !/github\.io$/.test(location.hostname);
+  const demoCrowd = () => ['Jeff', 'Jim', 'Kate', 'Maximilian', 'Rach', 'Oz', 'Pete', 'Wanda', 'JJ', 'Liz', 'Tom', 'Fiona', 'Ronald', 'Kip', 'Sue', 'Dave', 'Nat', '', '', '', '']
+    .map((name, i) => ({ id: `demo${i}`, at: 1 + i, name, tv: false, declined: false }));
   // The away notice shows at 30 s; take-over prompts wait longer, so a scorekeeper whose screen dozes
   // between shots isn't bumped. [away for more than, how far down the line is asked]
   const BACKUP_STAGES = [[60000, 0], [90000, 1]];
@@ -2977,6 +2983,26 @@
     }
   }
 
+  // TV panel: "21 watching", then the named watchers as chips in the order they joined, the one
+  // first in line to take over marked 🛟, then "+ N more" for the rest (and anyone without a name).
+  const WATCH_CHIPS = 10;
+  const backupName = () => { const b = watchLine()[0]; return b && b.name ? b.name : ''; };
+  function watchersBlock() {
+    const list = watchers.filter((w) => !w.tv).sort(byJoin);
+    if (!list.length) return '';
+    const backupId = watchLine()[0] && watchLine()[0].id;
+    const shown = list.filter((w) => w.name).slice(0, WATCH_CHIPS);
+    const more = list.length - shown.length;
+    const chip = (w) => (w.id === backupId
+      ? `<span class="backup" title="First in line to take over scoring">🛟 ${esc(w.name)}</span>`
+      : `<span>${esc(w.name)}</span>`);
+    return `
+      <div class="jp-watching">
+        <div class="jp-count">${list.length} watching</div>
+        ${shown.length ? `<div class="jp-chips">${shown.map(chip).join('')}${more ? `<span class="more">+ ${more} more</span>` : ''}</div>` : ''}
+      </div>`;
+  }
+
   // "Bob, Jill & Mack are watching" / "Jeff, Jim, Kate & 18 others are watching" / "5 people are watching"
   function watchingText() {
     const list = watchers.filter((w) => !w.tv).sort(byJoin);
@@ -2994,7 +3020,7 @@
   function followWatchers(code) {
     if (stopWatchers) stopWatchers();
     stopWatchers = code && window.killerLive ? window.killerLive.watchWatchers(code, (list) => {
-      watchers = list;
+      watchers = DEMO_WATCHERS ? demoCrowd().concat(list) : list;
       checkBackup();
       if (tvOn() || (sheet.open && sheetMode && sheetMode.type === 'share')) {
         if (sheet.open && sheetMode && sheetMode.type === 'share') renderSheet();
