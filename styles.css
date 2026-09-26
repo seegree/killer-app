@@ -1726,3 +1726,86 @@ body.watch .pc:active { transform: none; }
 @media (orientation: landscape) and (max-height: 340px) {
   .win-actions ~ .watch-entry { display: none; }
 }
+
+/* ------------------------------------------------------------------ scorekeeper away / take over */
+/* Every watching screen: the scorekeeper has gone quiet (the TV adds a take-over button) */
+.away-banner {
+  position: fixed;
+  z-index: 72;
+  left: 50%;
+  top: calc(var(--safe-t) + 64px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 10px 18px;
+  border-radius: 18px;
+  background: rgba(20, 14, 4, 0.94);
+  border: 1px solid rgba(245, 197, 66, 0.55);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.85);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold);
+  animation: deckIn 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.away-banner b { font-variant-numeric: tabular-nums; color: var(--chalk); }
+.away-banner .btn { min-height: 44px; font-size: 16px; }
+body.tv .away-banner { top: 50%; transform: translate(-50%, -50%); padding: 22px 30px; font-size: clamp(20px, 2.2vw, 34px); flex-direction: column; }
+body.tv .away-banner .btn { min-height: 56px; padding: 0 28px; font-size: clamp(18px, 1.8vw, 26px); }
+/* Scorekeeper: this phone can't reach the watchers */
+.offline-banner {
+  position: fixed;
+  z-index: 72;
+  left: 12px;
+  right: 12px;
+  top: calc(var(--safe-t) + 6px);
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #5c1417;
+  border: 1px solid rgba(229, 72, 77, 0.7);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #ffd9da;
+  box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.8);
+}
+.tv-more { font-size: 22px; line-height: 1; letter-spacing: 0.05em; opacity: 0.55; }
+.tv-more:hover { opacity: 1; }
+.invite-btn { gap: 5px; }
+@media (max-width: 420px) { .invite-label { display: none; } .invite-btn { padding: 0 10px; font-size: 18px; } } /* narrow phones: the icon alone fits beside Live */
+.sheet-note.warn { color: var(--gold); }
+.takeover-ask { margin: 14px 0 8px; font-weight: 700; }
+
+/* TV screens: a big "scan to watch" panel beside the chalkboard (sideways phones keep the corner code) */
+.join-panel { display: none; }
+body.tv .now-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: stretch; }
+body.tv .now-row > .now { grid-column: 1; grid-row: 1; } /* .now carries an order from the phone layout */
+body.tv .now-row > .join-panel { grid-column: 2; grid-row: 1; }
+body.tv .join-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1vh;
+  padding: 1.8vh 1.8vw;
+  border-radius: 24px;
+  background: #10211a;
+  border: 1px solid rgba(245, 197, 66, 0.35);
+  text-align: center;
+}
+.jp-title { font-family: var(--display); font-size: clamp(24px, 4.2vh, 52px); letter-spacing: 0.06em; line-height: 1; color: var(--gold); }
+.jp-qr svg { display: block; width: min(38vh, 26vw); height: auto; padding: 12px; border-radius: 18px; background: #fff; }
+.jp-code { font-family: var(--display); font-size: clamp(30px, 5.4vh, 70px); letter-spacing: 0.18em; text-indent: 0.18em; line-height: 1; color: var(--chalk); }
+.jp-note { font-size: clamp(13px, 1.7vh, 20px); font-weight: 600; color: var(--chalk-dim); }
+body.tv:has(.join-panel) .topbar .tv-join { display: none; }
+@media (orientation: landscape) and (max-height: 600px) {
+  body.tv .now-row { display: contents; }
+  body.tv .join-panel { display: none; }
+  body.tv:has(.join-panel) .topbar .tv-join { display: flex; }
+}

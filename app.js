@@ -833,6 +833,10 @@
 
     if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
     if (WATCH_TV) app.insertAdjacentHTML('beforeend', syncReadout());
+    if (isAway()) app.insertAdjacentHTML('beforeend', awayBanner());
+    if (!WATCH && share && !liveConnected && S.phase !== 'setup') {
+      app.insertAdjacentHTML('beforeend', '<div class="offline-banner" role="alert">⚠️ Offline: watchers aren’t getting updates. They’ll catch up when you reconnect.</div>');
+    }
     if (partyNeedsJoin() || partyNeedsWake()) {
       app.insertAdjacentHTML('beforeend', `
         <div class="party-banner" role="alert">
@@ -990,6 +994,16 @@
         <span class="nx-name">${esc(x.name)}</span>${marks(x, 'xs')}
       </span>`).join('');
 
+    // TV screens: a big "scan to watch" panel beside the chalkboard, so the room can join in
+    const joinCode = tvOn() ? (WATCH || (share && share.code)) : null;
+    const joinPanel = joinCode ? `
+      <aside class="join-panel" aria-label="Scan to watch this game on your phone">
+        <div class="jp-title">Scan to watch</div>
+        <div class="jp-qr">${qrSvg(watchLink(joinCode, false))}</div>
+        <div class="jp-code">${esc(joinCode)}</div>
+        <div class="jp-note">Follow the game live on your phone</div>
+      </aside>` : '';
+
     app.innerHTML = `
       <section class="game">
         <header class="topbar">
@@ -997,10 +1011,10 @@
           <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out${MODE_ICON[S.startLives] ? `<i aria-hidden="true">·</i><span class="mode-tag" title="${MODES[S.startLives]}: ${S.startLives} ${S.startLives === 1 ? 'life' : 'lives'} each">${MODE_ICON[S.startLives]}</span>` : ''}</div>
           ${tvOn()
             ? WATCH_TV
-              ? `<div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div>`
+              ? `<div class="top-actions"><div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div><button class="icon-btn tv-more" data-do="tvMenu" aria-label="More options">⋯</button></div>`
               : '<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button>'
             : WATCH
-              ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">📺 TV</button>' : ''}<span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
+              ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">📺 TV</button>' : ''}<button class="btn btn-ghost btn-sm invite-btn" data-do="invite" aria-label="Invite people to watch"><span aria-hidden="true">📲</span><span class="invite-label">Invite</span></button><span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
               : `<div class="top-actions">
                   <button class="btn btn-ghost btn-sm top-extra" data-do="rerackTop" title="Re-rack (B)">🎱 Re-rack</button>
                   ${canTV() ? '<button class="btn btn-ghost btn-sm top-extra" data-do="tv" title="TV mode (T)">📺 TV</button>' : ''}
@@ -1010,6 +1024,7 @@
 
         <div class="stage">
           <div class="left">
+            ${joinPanel ? '<div class="now-row">' : ''}
             <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${showClock && cv.warn ? ' final' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
@@ -1025,6 +1040,7 @@
                   : `<div class="now-next">${nextLine}</div>`}
               </div>
             </section>
+            ${joinPanel ? `${joinPanel}</div>` : ''}
 
             ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div>${WATCH_TV ? '' : youStrip(meP)}</section>` : `            <section class="controls">
               <div class="lastline">
@@ -1720,6 +1736,58 @@
       return;
     }
 
+    // Watchers: pass the game on (a big QR code to scan, or a link to send)
+    if (sheetMode.type === 'invite') {
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Invite to watch</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <div class="share-qr">${qrSvg(watchLink(WATCH, false))}</div>
+          <div class="share-code">${esc(WATCH)}</div>
+          <div class="share-actions"><button class="btn btn-brass" data-sheet="inviteShare">${navigator.share ? 'Send the link' : copied === 'invite' ? '✓ Copied' : 'Copy link'}</button></div>
+          <p class="sheet-note">Anyone who scans this can follow the game live on their phone, and invite others the same way.</p>
+        </div>`;
+      return;
+    }
+
+    // TV display: the quiet way in to taking over scoring
+    if (sheetMode.type === 'tvmenu') {
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Options</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <button class="sheet-btn" data-sheet="takeoverAsk">🎱 Take over scoring…<small>Keep this game going from this device</small></button>
+        </div>`;
+      return;
+    }
+
+    if (sheetMode.type === 'takeover') {
+      const secs = Math.round(awayFor() / 1000);
+      const names = S.players.map((p) => p.name).sort((a, b) => a.localeCompare(b));
+      const mine = me.codes[WATCH] ? nameKey(me.codes[WATCH]) : null;
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Take over scoring</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note${isAway() ? '' : ' warn'}">${isAway()
+            ? `The scorekeeper has been away for ${fmtAway(awayFor())}.`
+            : `The scorekeeper still looks active${remoteMeta.alive ? ` (last heard from ${secs} s ago)` : ''}. Take over anyway?`}
+            This device becomes the scorekeeper for game ${esc(WATCH)}, carrying on from the latest score. Everyone’s link keeps working. It replaces any game saved on this device.</p>
+          <p class="takeover-ask">Who’s taking over?</p>
+          <div class="who-grid">
+            ${names.map((n) => `<button class="who-name${mine && nameKey(n) === mine ? ' on' : ''}" data-sheet="takeover" data-name="${esc(n)}">${esc(n)}</button>`).join('')}
+          </div>
+          <button class="sheet-btn" data-sheet="takeover" data-name="">Someone else<small>The room sees “Scoring moved to a new device”</small></button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'watch') {
       sheet.innerHTML = `
         <div class="sheet-body">
@@ -1920,6 +1988,14 @@
       case 'toggleAlertSound': me.sound = !me.sound; saveMe(); renderSheet(); if (me.sound) { unlockAudio(); sfx.deck(); } break;
       case 'watchTv': goWatch($('#watchCode') ? $('#watchCode').value : '', true); break;
       case 'copyTvLink': copyLink(watchLink(share.code, true), 'tv'); break;
+      case 'inviteShare': {
+        const url = watchLink(WATCH, false);
+        if (navigator.share) navigator.share({ title: 'Killer: live game', url }).catch(() => {});
+        else copyLink(url, 'invite');
+        break;
+      }
+      case 'takeoverAsk': sheetMode = { type: 'takeover' }; renderSheet(); break;
+      case 'takeover': takeOver(b.dataset.name || ''); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
       case 'leadLess': case 'leadMore':
         setSyncLead(syncLead + (b.dataset.sheet === 'leadMore' ? LEAD_STEP : -LEAD_STEP));
@@ -2416,7 +2492,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults', 'invite', 'tvMenu', 'takeoverOpen'];
 
   app.addEventListener('click', (e) => {
     if (!WATCH && e.target.closest('.setup .wordmark')) { modeTap(); return; }
@@ -2456,6 +2532,9 @@
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       case 'watchEntry': openSheet({ type: 'watch' }); break;
       case 'whoami': openSheet({ type: 'who' }); break;
+      case 'invite': openSheet({ type: 'invite' }); break;
+      case 'tvMenu': openSheet({ type: 'tvmenu' }); break;
+      case 'takeoverOpen': openSheet({ type: 'takeover' }); break;
       case 'joinParty': partyJoined = true; unlockAudio(); sfx.extra(); render(); break;
       case 'declineParty': partyDeclined = true; partyJoined = false; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
@@ -2655,10 +2734,11 @@
     if (!share || !live) return;
     const code = share.code;
     try {
-      await live.publish(code, publicState());
+      await live.publish(code, publicState(), share.claim);
       setShareStatus('live');
     } catch (err) {
-      if (String(err && (err.code || err.message)).toUpperCase().includes('PERMISSION')) {
+      if (isPermission(err)) {
+        if (await checkTakenOver()) return; // someone else is scoring this game now
         // The code belongs to another game (or this phone's ID changed): switch to a fresh code.
         share = { code: newCode() };
         saveShare();
@@ -2669,6 +2749,109 @@
       setShareStatus('offline');
     }
   }
+
+  // ---------------------------------------------------------------- scorekeeper away / take over
+  // The scorekeeper's app sends a "still here" signal while it's running. If watchers hear nothing
+  // for 30 seconds, every screen says so; the TV display (or any device opening the game with &tv)
+  // can then take over scoring on the same code, so nobody's link breaks.
+  const BEAT_MS = 10000;
+  const AWAY_MS = 30000;
+  const MOVED_KEY = 'killer.moved'; // this phone was the scorekeeper until someone took over
+  const TOOK_KEY = 'killer.took'; // this device just took over scoring
+  const isPermission = (err) => String(err && (err.code || err.message)).toUpperCase().includes('PERMISSION');
+  const remoteMeta = { alive: 0, claimId: null };
+
+  setInterval(() => {
+    const live = window.killerLive;
+    if (WATCH || !share || !live || document.visibilityState !== 'visible') return;
+    live.beat(share.code).catch((err) => { if (isPermission(err)) checkTakenOver(); });
+  }, BEAT_MS);
+
+  // Watchers: how long since the scorekeeper was last heard from (0 if unknown or not playing).
+  const awayFor = () => (WATCH && remote.status === 'live' && S.phase === 'playing' && remoteMeta.alive
+    ? Math.max(0, Date.now() + serverOffset() - remoteMeta.alive) : 0);
+  const isAway = () => awayFor() > AWAY_MS;
+  const fmtAway = (ms) => { const t = Math.floor(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+
+  function awayBanner() {
+    return `
+      <div class="away-banner" role="status">
+        <span>⏸ Scorekeeper away · <b id="awayFor">${fmtAway(awayFor())}</b></span>
+        ${WATCH_TV ? '<button class="btn btn-brass" data-do="takeoverOpen">Take over scoring here</button>' : ''}
+      </div>`;
+  }
+
+  let wasAway = false;
+  function updateAway() {
+    const away = isAway();
+    if (away !== wasAway) { wasAway = away; render(); return; }
+    const el = document.getElementById('awayFor');
+    if (el) el.textContent = fmtAway(awayFor());
+  }
+  if (WATCH) setInterval(updateAway, 1000);
+
+  function applyMeta(meta) {
+    remoteMeta.alive = meta.alive || 0;
+    const c = meta.claim;
+    const id = c && c.id ? c.id : '';
+    if (remoteMeta.claimId === null) {
+      // Joining: only mention a takeover that just happened
+      if (id && c.at && Date.now() + serverOffset() - c.at < 60000) announceScorer(c.name);
+    } else if (id && id !== remoteMeta.claimId) announceScorer(c.name);
+    remoteMeta.claimId = id;
+    updateAway();
+  }
+  const announceScorer = (name) => toast(name ? `🎱 ${name} has taken over scoring` : '🎱 Scoring moved to a new device', 4000);
+
+  // This device becomes the scorekeeper: the latest game from the server, published on the same code.
+  async function takeOver(name) {
+    const live = window.killerLive;
+    if (!live || !WATCH) return;
+    const btns = [...sheet.querySelectorAll('[data-sheet="takeover"]')];
+    btns.forEach((x) => { x.disabled = true; });
+    try {
+      const rec = await live.fetch(WATCH);
+      if (!rec) throw new Error('missing');
+      const { clock, room, sfx: stamped, ...game } = rec.state;
+      const claim = { name, id: newCode() };
+      await live.publish(WATCH, { ...rec.state, sfx: [] }, claim);
+      localStorage.setItem(GAME_KEY, JSON.stringify({ state: { ...freshState(), ...game, tv: false }, history: [] }));
+      localStorage.setItem(SHARE_KEY, JSON.stringify({ code: WATCH, claim }));
+      if (clock) localStorage.setItem(CLOCK_KEY, JSON.stringify({ on: !!clock.on, secs: clock.secs || 30 }));
+      sessionStorage.setItem(TOOK_KEY, '1');
+      location.replace(location.pathname);
+    } catch (err) {
+      btns.forEach((x) => { x.disabled = false; });
+      toast(isPermission(err)
+        ? 'Taking over isn’t switched on for this game server yet.'
+        : 'Couldn’t reach the game. Check the connection and try again.', 3500);
+    }
+  }
+
+  // The old scorekeeper's phone, once someone else has taken over: switch to watching that game.
+  async function checkTakenOver() {
+    const live = window.killerLive;
+    if (!share || !live) return false;
+    const rec = await live.fetch(share.code).catch(() => null);
+    // Moved only if someone else claimed it since this phone's own claim (if it had one)
+    if (!rec || !rec.claim || rec.owner === live.myId() || (share.claim && rec.claim.id === share.claim.id)) return false;
+    const code = share.code;
+    share = null;
+    saveShare();
+    try { sessionStorage.setItem(MOVED_KEY, rec.claim.name || ''); } catch (_) { /* ignore */ }
+    location.replace(watchLink(code, false));
+    return true;
+  }
+
+  // One-off notes after a takeover reload
+  try {
+    if (sessionStorage.getItem(TOOK_KEY)) { sessionStorage.removeItem(TOOK_KEY); setTimeout(() => toast('🎱 You’re scoring now', 3500), 600); }
+    const moved = sessionStorage.getItem(MOVED_KEY);
+    if (moved !== null && WATCH) {
+      sessionStorage.removeItem(MOVED_KEY);
+      setTimeout(() => toast(moved ? `🎱 ${moved} is scoring now` : '🎱 Scoring moved to another device', 4000), 600);
+    }
+  } catch (_) { /* ignore */ }
 
   function startSharing() {
     share = { code: newCode() };
@@ -2697,7 +2880,7 @@
   function copyLink(link, key) {
     const done = () => {
       copied = key;
-      const b = sheet.querySelector(`[data-sheet="${key === 'tv' ? 'copyTvLink' : 'copyLink'}"]`);
+      const b = sheet.querySelector(`[data-sheet="${({ tv: 'copyTvLink', invite: 'inviteShare' })[key] || 'copyLink'}"]`);
       if (b) { b.textContent = '✓ Copied'; b.classList.add('copied'); }
       clearTimeout(copyLink.timer);
       copyLink.timer = setTimeout(() => { copied = null; if (sheet.open) renderSheet(); }, 1600);
@@ -2771,12 +2954,22 @@
     window.killerLive.watch(WATCH, applyRemote, () => {
       remote.status = 'missing';
       render();
-    });
+    }, applyMeta);
   }
 
   function onLiveReady() {
     if (WATCH) startWatching();
     else if (share) publishNow();
+    if (!WATCH) window.killerLive.onConnected(setConnected);
+  }
+
+  // Scorekeeper: warn when this phone can't reach the watchers (after a short grace period).
+  let liveConnected = true;
+  let offlineTimer = 0;
+  function setConnected(c) {
+    clearTimeout(offlineTimer);
+    if (c) { if (!liveConnected) { liveConnected = true; render(); } return; }
+    offlineTimer = setTimeout(() => { liveConnected = false; render(); }, 5000);
   }
   if (window.killerLive) onLiveReady();
   else window.addEventListener('killer:live-ready', onLiveReady, { once: true });

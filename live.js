@@ -3,7 +3,7 @@
 // Firebase web settings are public by design; the database rules decide who may write.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { getDatabase, ref, set, remove, onValue, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { getDatabase, ref, set, get, remove, onValue, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 
 const firebaseApp = initializeApp({
   apiKey: 'AIzaSyA-qlfDzz8rTKS6tKBIGlFn68hoc2Kn60Q',
@@ -30,13 +30,40 @@ const gameRef = (code) => ref(db, `games/${code}`);
 let offset = 0;
 onValue(ref(db, '.info/serverTimeOffset'), (snap) => { offset = snap.val() || 0; });
 
+// Whether this device can reach Firebase right now (writes wait quietly while it can't).
+let connected = false;
+const connectionWatchers = new Set();
+onValue(ref(db, '.info/connected'), (snap) => {
+  connected = !!snap.val();
+  connectionWatchers.forEach((f) => f(connected));
+});
+
 window.killerLive = {
   serverOffset: () => offset,
+  onConnected(f) { connectionWatchers.add(f); f(connected); },
+  myId: () => (auth.currentUser ? auth.currentUser.uid : null),
 
   // The state is stored as one JSON string: simpler than mapping it onto Firebase's key rules.
-  async publish(code, state) {
+  // `alive` is the scorekeeper's "still here" time. After a takeover, every update carries the
+  // claim ({ name, id }) so the room (and the old scorekeeper's phone) know who is scoring now.
+  async publish(code, state, claim) {
     const owner = await uid();
-    await set(gameRef(code), { owner, updated: serverTimestamp(), state: JSON.stringify(state) });
+    const rec = { owner, updated: serverTimestamp(), alive: serverTimestamp(), state: JSON.stringify(state) };
+    if (claim) rec.claim = { name: claim.name || '', id: claim.id, at: serverTimestamp() };
+    await set(gameRef(code), rec);
+  },
+
+  // The scorekeeper's app, every few seconds while it's actually running.
+  async beat(code) {
+    await uid();
+    await set(ref(db, `games/${code}/alive`), serverTimestamp());
+  },
+
+  // The latest copy of a game, straight from the server (for taking over scoring).
+  async fetch(code) {
+    const v = (await get(gameRef(code))).val();
+    if (!v || typeof v.state !== 'string') return null;
+    return { ...v, state: JSON.parse(v.state) };
   },
 
   async stop(code) {
@@ -44,13 +71,18 @@ window.killerLive = {
     await remove(gameRef(code));
   },
 
-  // Calls onState(state) on every change; onMissing() if the game doesn't exist (or can't be read).
-  watch(code, onState, onMissing) {
+  // Calls onMeta({ alive, claim }) on every change, onState(state) when the game itself changed
+  // (not on the scorekeeper's heartbeats), and onMissing() if the game doesn't exist or can't be read.
+  watch(code, onState, onMissing, onMeta = () => {}) {
+    let last = null;
     return onValue(
       gameRef(code),
       (snap) => {
         const v = snap.val();
         if (!v || typeof v.state !== 'string') return onMissing();
+        onMeta({ alive: v.alive || 0, claim: v.claim || null });
+        if (v.state === last) return;
+        last = v.state;
         try { onState(JSON.parse(v.state)); } catch (_) { onMissing(); }
       },
       () => onMissing(),
