@@ -1840,19 +1840,16 @@
     }
 
     if (sheetMode.type === 'takeover') {
-      const secs = Math.round(awayFor() / 1000);
       const names = S.players.map((p) => p.name).sort((a, b) => a.localeCompare(b));
       const mine = me.codes[WATCH] ? nameKey(me.codes[WATCH]) : null;
       sheet.innerHTML = `
         <div class="sheet-body">
           <div class="sheet-head">
-            <h3 class="sheet-title">Take over scoring</h3>
+            <h3 class="sheet-title">Take over</h3>
             <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
           </div>
-          <p class="sheet-note${isAway() ? '' : ' warn'}">${isAway()
-            ? `The scorekeeper has been away for ${fmtAway(awayFor())}.`
-            : `The scorekeeper still looks active${remoteMeta.alive ? ` (last heard from ${secs} s ago)` : ''}. Take over anyway?`}
-            This device becomes the scorekeeper for game ${esc(WATCH)}, carrying on from the latest score. Everyone’s link keeps working. It replaces any game saved on this device.</p>
+          <div id="takeStatus">${takeStatus()}</div>
+          <p class="sheet-note">This device becomes the scorekeeper for game ${esc(WATCH)}, carrying on from the latest score. Everyone’s link keeps working. It replaces any game saved on this device.</p>
           <p class="takeover-ask">Who’s taking over?</p>
           <div class="who-grid">
             ${names.map((n) => `<button class="who-name${mine && nameKey(n) === mine ? ' on' : ''}" data-sheet="takeover" data-name="${esc(n)}">${esc(n)}</button>`).join('')}
@@ -2164,6 +2161,29 @@
     toast(partyUnlocked ? '🎉 Party mode unlocked' : 'Party mode hidden');
     renderSheet();
   }
+
+  // A hidden way for a watcher to take over scoring at any time.
+  const HOLD_MS = 3000;
+  let hold = null;
+  const endHold = () => { if (hold) { clearTimeout(hold.timer); hold = null; } };
+  document.addEventListener('pointerdown', (e) => {
+    endHold();
+    if (!WATCH || WATCH_TV || !e.target.closest('.live-badge')) return;
+    hold = {
+      id: e.pointerId, x: e.clientX, y: e.clientY,
+      timer: setTimeout(() => {
+        hold = null;
+        if (sheet.open) return;
+        if (navigator.vibrate) navigator.vibrate(30);
+        openSheet({ type: 'takeover', since: remoteMeta.claimId });
+      }, HOLD_MS),
+    };
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (hold && e.pointerId === hold.id && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 12) endHold();
+  });
+  ['pointerup', 'pointercancel'].forEach((t) => document.addEventListener(t, endHold));
+  document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.live-badge')) e.preventDefault(); });
 
   function setSyncLead(ms) {
     syncLead = Math.min(LEAD_MAX, Math.max(LEAD_MIN, ms));
@@ -2865,6 +2885,13 @@
     return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
   };
 
+  // The takeover sheet's subhead: is the scorekeeper still there, and when were they last seen?
+  function takeStatus() {
+    if (isAway()) return `<div class="take-status"><b>📡 Scorekeeper away</b><span>Quiet for ${fmtAway(awayFor())}</span></div>`;
+    const seen = remoteMeta.alive ? `<span>Seen ${Math.round(awayFor() / 1000)} s ago · take over anyway?</span>` : '<span>Take over anyway?</span>';
+    return `<div class="take-status active"><b>⚠️ Scorekeeper still active</b>${seen}</div>`;
+  }
+
   function awayBanner() {
     return `
       <div class="away-banner" role="status">
@@ -2883,6 +2910,8 @@
     if (away !== wasAway || everyone !== wasEveryone) { wasAway = away; wasEveryone = everyone; render(); return; }
     const el = document.getElementById('awayFor');
     if (el) el.textContent = fmtAway(awayFor());
+    const ts = document.getElementById('takeStatus');
+    if (ts) ts.innerHTML = takeStatus();
   }
   if (WATCH) setInterval(updateAway, 1000);
 
