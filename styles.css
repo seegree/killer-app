@@ -717,6 +717,10 @@ body.watch .clock-final { cursor: default; }
   font-weight: 700;
 }
 
+/* Only on the break: nothing went in, so the breaker shoots again (on the clock) */
+.dry-break { flex: none; min-height: 40px; margin-left: auto; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(245, 197, 66, 0.55); background: rgba(245, 197, 66, 0.12); color: var(--gold); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.dry-break + .undo { margin-left: -2px; }
+
 .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .act {
   position: relative;

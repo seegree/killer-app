@@ -15,10 +15,10 @@ There's no build step and no dependencies. The game auto-saves in the browser, s
 - **How to play:** the rules are on the start screen, in the menu, and in the name picker for watchers. A watcher sees them once, after picking their name.
 - **Each shot:** **Miss** takes a life and passes the turn. **Made** is safe and passes the turn. **+1 Extra life** is a made shot that sank 2 balls: it adds a life and passes the turn. For 3 or 4 balls, tap it again quickly while the board still shows the shooter (up to 3 taps).
 - **Marks:** 1 lost is `/`, 2 lost is `X`, and 3 lost is a circled X meaning OUT. Lives above 3 show as gold `+N` chips.
-- **Shot clock (optional):** switch it on above **Rack 'em** and set the seconds (default 30). Breaks aren't timed (the opening break, or the break after a re-rack); otherwise it starts when each new shooter's name appears, turns red for the last 5 seconds, and sounds a buzzer with **TIME!** at zero. It never scores anything. Tap the clock to pause it; tap again to resume. While paused you can **Re-rack** (records who breaks; their break isn't timed) or put the clock **back to** the full time.
+- **Shot clock (optional):** switch it on above **Rack 'em** and set the seconds (default 30). Breaks aren't timed (the opening break, or the break after a re-rack). If nothing goes in on the break, tap **Dry break** (or press `D`): the breaker shoots again, and that shot is timed. Otherwise it starts when each new shooter's name appears, turns red for the last 5 seconds, and sounds a buzzer with **TIME!** at zero. It never scores anything. Tap the clock to pause it; tap again to resume. While paused you can **Re-rack** (records who breaks; their break isn't timed) or put the clock **back to** the full time.
 - **Fix mistakes:** use **Undo** (it goes back any number of steps), or tap any player to set their lives, make them the shooter, or remove them.
 - **Menu:** add a late player, re-rack, shot clock, Big board (laptops and desktops only: the whole game, big, driven by the keyboard), sound, rematch, or start a new game.
-- **Keyboard:** `X` miss · `Space` made · `E` extra life · `⌘Z` / `Ctrl+Z` undo · `T` big board · `P` pause/resume clock · `R` clock back to full time · `B` re-rack.
+- **Keyboard:** `X` miss · `Space` made · `E` extra life · `⌘Z` / `Ctrl+Z` undo · `T` big board · `P` pause/resume clock · `R` clock back to full time · `B` re-rack · `D` dry break.
 
 ## Logo and artwork
 All artwork is flat SVG, with text converted to outlines.

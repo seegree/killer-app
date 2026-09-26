@@ -543,6 +543,21 @@
     render();
   }
 
+  // The break: the opening break, or the break after a re-rack, until that shot is scored.
+  // A dry break (nothing went in) ends it too: the breaker shoots again, on the clock.
+  const lastTurnEvent = () => [...S.log].reverse().find((e) => ['rack', 'miss', 'made', 'dry'].includes(e.a));
+  const onBreak = () => { const e = lastTurnEvent(); return !e || e.a === 'rack'; };
+
+  function dryBreak() {
+    const p = current();
+    if (!p || S.phase !== 'playing' || !onBreak() || S.turnBonus) return;
+    clk = null; // a fresh clock for the second shot (the render below starts it)
+    commit(() => {
+      S.log.push({ p: p.id, t: Date.now(), a: 'dry' });
+      S.last = { type: 'dry', id: p.id, name: p.name };
+    });
+  }
+
   function rerack() {
     const p = current();
     if (!p || S.phase !== 'playing') return;
@@ -889,7 +904,7 @@
       return `<b>${esc(p.name)}</b> <span class="t-gold">+${S.turnBonus}</span> · now tap <em>Made</em>`;
     }
     const L = S.last;
-    if (!L) return p ? `<b>${esc(p.name)}</b> to break — good luck` : '';
+    if (!L) return p ? `<b>${esc(p.name)}</b> to break` : ''; // short: Dry break sits beside it
     const n = `<b>${esc(L.name)}</b>`;
     switch (L.type) {
       case 'miss': return L.lives <= 0 ? `${n} is <span class="t-red">OUT</span>` : `${n} missed · ${livesLabel(L.lives)}`;
@@ -899,6 +914,7 @@
       case 'add': return `${n} joined the game`;
       case 'remove': return `${n} left the game`;
       case 'rack': return `Re-rack · ${n} breaks`;
+      case 'dry': return `Dry break · ${n} shoots again`;
       default: return '';
     }
   }
@@ -1069,10 +1085,10 @@
     const stamp = stampText ? `<div class="now-stamp ${fb.kind}" aria-hidden="true">${stampText}</div>` : '';
     const livesText = p.lives <= 0 ? 'Out' : p.lives === 1 ? 'Last life' : `${p.lives} lives left`;
 
-    // The clock starts once the board has moved on to the new shooter. Breaks aren't timed:
-    // the opening break, and the break after a re-rack, until that shot is scored.
-    const lastEvent = [...S.log].reverse().find((e) => e.a === 'rack' || e.a === 'miss' || e.a === 'made');
-    const breakShot = !lastEvent || lastEvent.a === 'rack';
+    // The clock starts once the board has moved on to the new shooter. Breaks aren't timed (see onBreak).
+    const lastEvent = lastTurnEvent();
+    const breakShot = onBreak();
+    const again = heldIdx < 0 && lastEvent && lastEvent.a === 'dry';
     const showClock = clockOn() && heldIdx < 0 && !breakShot && (!WATCH || (clk && clk.id === p.id));
     if (!WATCH && showClock && (!clk || clk.id !== p.id)) startClock(p.id);
     const paused = showClock && clk && clk.pausedAt;
@@ -1141,7 +1157,7 @@
             <section class="now${entering ? ' enter' : ''}${stamp && fb.id ? ' holding' : ''}${showClock && cv.warn ? ' final' : ''}" aria-live="polite">
               <div class="now-felt">
                 ${stamp}${clockHtml}
-                <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : 'Now shooting'}</div>
+                <div class="now-label">${breakShot && heldIdx < 0 ? 'Now breaking' : again ? 'Shoots again' : 'Now shooting'}</div>
                 <div class="now-name" style="--fit:${fit(p.name)}">${esc(p.name)}</div>
                 <div class="now-status">${marks(p, 'lg')}<span class="now-lives${p.lives <= 1 ? ' last' : ''}">${livesText}</span></div>
                 ${paused && !WATCH
@@ -1158,6 +1174,7 @@
             ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div>${WATCH_TV ? '' : youStrip(meP)}</section>` : `            <section class="controls">
               <div class="lastline">
                 <span class="last-text">${lastText()}</span>
+                ${breakShot && heldIdx < 0 && !S.turnBonus ? '<button class="dry-break" data-do="dryBreak" title="Nothing went in on the break (D)">Dry break</button>' : ''}
                 <button class="undo" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
               </div>
               <div class="actions">
@@ -1180,7 +1197,7 @@
           </section>
         </div>
 
-        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit big board</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}${!WATCH && onBreak() ? '<span><kbd>D</kbd> Dry break</span>' : ''}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit big board</span></footer>` : ''}
       </section>`;
   }
 
@@ -2751,6 +2768,7 @@
       case 'mode': S.startLives = Number(t.dataset.n); save(); render(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
+      case 'dryBreak': dryBreak(); break;
       case 'rerackTop': rerack(); toast(`🎱 Re-rack · ${current() ? current().name : ''} breaks`); break;
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       case 'watchEntry': openSheet({ type: 'watch' }); break;
@@ -2887,6 +2905,7 @@
       else if (k === 'p' && clockOn()) { if (clk && clk.pausedAt) resumeClock(); else pauseClock(); render(); }
       else if (k === 'r' && clockOn()) { restartClock(); render(); }
       else if (k === 'b') rerack();
+      else if (k === 'd') dryBreak();
       else return;
       e.preventDefault();
     }
