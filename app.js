@@ -1813,7 +1813,7 @@
           <div class="sheet-head">
             <h3 class="sheet-title">Keep it going?</h3>
           </div>
-          <p class="backup-lead">📵 The scorekeeper’s phone went quiet ${fmtAway(awayFor())} ago.</p>
+          <p class="backup-lead">📡 The scorekeeper’s device went quiet ${fmtAway(awayFor())} ago.</p>
           <p class="sheet-note">You’re ${idx > 0 ? 'next' : 'first'} in line to take over scoring. You’ll carry on from the latest score${name ? ` as ${esc(name)}` : ''}, and everyone’s link keeps working.</p>
           <button class="btn btn-start takeover-go" data-sheet="takeover" data-name="${esc(name)}">Take over scoring</button>
           <button class="link-btn" data-sheet="backupNo">Not me</button>
@@ -2936,7 +2936,7 @@
     }
   }
 
-  // The old scorekeeper's phone, once someone else has taken over: switch to watching that game.
+  // The old scorekeeper's device, once someone else has taken over: switch to watching that game.
   async function checkTakenOver() {
     const live = window.killerLive;
     if (!share || !live) return false;
