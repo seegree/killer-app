@@ -8,10 +8,16 @@
   // Game length: lives each player starts with. Marks always count down from 3, so a shorter game
   // simply starts everyone part-way (Blitz with a /, Sudden death with an X).
   const MODES = { 3: 'Classic', 2: 'Blitz', 1: 'Sudden death' };
-  const MODE_ICON = { 2: '⚡', 1: '💀' };
-  // The choice is a hidden extra, off until unlocked on this phone (see modeTap).
+  const MODE_ICON = { 2: '⚡', 1: '💀' }; // Classic has none, except 🎱 in the game length choice
+  // The choice is a hidden extra, off until unlocked on this phone (see modeTap), except for
+  // big groups: from BLITZ_AT players it appears on its own, with a shorter game already picked.
   const MODES_KEY = 'killer.modes.v1';
   let modesUnlocked = (() => { try { return localStorage.getItem(MODES_KEY) === 'on'; } catch (_) { return false; } })();
+  // Big groups: [players, lives, shot clock seconds]. Games grow with players × lives, so these keep
+  // a big night to about an hour (see estimateMins).
+  const BIG_GROUPS = [[30, 1, 20], [20, 2, 25]];
+  const CLOCK_TIP_AT = 16; // from here even Classic runs past an hour, so suggest the clock
+  const RULES_KEY = 'killer.rules.v1'; // this phone has seen How to play (watchers get it once, after picking a name)
   const GAME_KEY = 'killer.game.v1';
   const ROSTER_KEY = 'killer.roster.v1';
   const HISTORY_CAP = 400;
@@ -206,8 +212,58 @@
   function newPlayer(name, lives = START_LIVES) {
     return { id: uid(), name, lives, shots: 0, pots: 0, misses: 0, extras: 0 };
   }
-  // Lives for the game about to start (Classic unless a shorter game is unlocked and chosen)
-  const gameLives = () => (modesUnlocked && MODES[S.startLives] ? S.startLives : START_LIVES);
+  // Big-group tier for a player count: 0 (none), 1 (Blitz), 2 (Sudden death)
+  const groupTier = (n) => { const i = BIG_GROUPS.findIndex(([at]) => n >= at); return i < 0 ? 0 : BIG_GROUPS.length - i; };
+  const modesShown = () => modesUnlocked || groupTier((S.roster || []).length) > 0;
+  // Lives for the game about to start (Classic unless a shorter game is shown and chosen)
+  const gameLives = () => (modesShown() && MODES[S.startLives] ? S.startLives : START_LIVES);
+
+  // Picks the big-group game length and shot clock each time the list crosses a threshold (either
+  // way). Between crossings the choice is the scorekeeper's. Going back under 20 restores Classic
+  // and the clock as it was before.
+  let groupChanged = false;
+  function syncGroupTier() {
+    const tier = groupTier(S.roster.length);
+    const was = S.auto ? S.auto.tier : 0;
+    if (tier === was) return;
+    if (!was) S.auto = { tier, clock: { ...clockPrefs } };
+    S.auto.tier = tier;
+    if (tier) {
+      const [, lives, secs] = BIG_GROUPS[BIG_GROUPS.length - tier];
+      S.startLives = lives;
+      setClockPrefs({ on: true, secs });
+      toast(`👥 Big group: ${MODES[lives]} · ${secs}‑second shot clock`, 4500, '.setup-foot');
+    } else {
+      S.startLives = START_LIVES;
+      if (S.auto.clock) setClockPrefs(S.auto.clock);
+      S.auto = null;
+      toast('Back to Classic', 3000, '.setup-foot');
+    }
+    groupChanged = true; // the next draw glows the settings that changed
+    save();
+  }
+
+  // Rough game length in minutes, [typical, slow]. Fitted to a simulation calibrated on real nights
+  // (about 40% misses, 5% two-ball shots, 27 s a turn with no clock, re-racks included).
+  function estimateMins(n, lives, clockSecs) {
+    const turns = ((n - 1) * lives + 1) / 0.35;
+    const secs = clockSecs ? Math.min(27, 21 + (clockSecs - 20) * 0.28) : 27;
+    const mins = (turns * secs) / 60;
+    return [mins, mins * 1.18 + 2];
+  }
+  function estimateText(n, lives, clockSecs) {
+    const r5 = (m) => Math.max(5, Math.round(m / 5) * 5);
+    const [typ, slow] = estimateMins(n, lives, clockSecs);
+    if (typ >= 55) {
+      // An hour or more: hours, to the nearest half hour
+      const half = (m) => Math.max(1, Math.round(m / 30) / 2);
+      const hrs = (h) => `${Math.floor(h) || ''}${h % 1 ? '½' : ''}`;
+      const lo = half(typ);
+      const hi = Math.max(half(slow), lo + 0.5);
+      return `${hrs(lo)}–${hrs(hi)} hours`;
+    }
+    return slow < 20 ? `${r5(typ)} min` : `${r5(typ)}–${Math.max(r5(slow), r5(typ) + 5)} min`;
+  }
 
   function nextAliveIndex(from) {
     const n = S.players.length;
@@ -329,6 +385,9 @@
     unlockAudio();
     render();
     checkMyTurn();
+    let seen = true;
+    try { seen = !!localStorage.getItem(RULES_KEY); } catch (_) { /* ignore */ }
+    if (name && !seen) openSheet({ type: 'rules', welcome: name });
   }
 
   // Fire the on-deck / you're-up alerts when this player's turn is coming.
@@ -488,7 +547,7 @@
     const p = current();
     if (!p || S.phase !== 'playing') return;
     commit(() => {
-      S.log.push({ p: p.id, a: 'rack' });
+      S.log.push({ p: p.id, t: Date.now(), a: 'rack' });
       S.last = { type: 'rack', id: p.id, name: p.name };
     });
     clk = null; // the break isn't timed; the next shooter gets a fresh clock
@@ -529,7 +588,7 @@
       p.misses++;
       p.lives--;
       S.last = { type: 'miss', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
-      S.log.push({ p: p.id, a: 'miss', l: p.lives });
+      S.log.push({ p: p.id, t: Date.now(), a: 'miss', l: p.lives });
       if (p.lives <= 0) { wentOut = true; markOut(p); }
       if (!checkFinish()) advance();
     });
@@ -551,7 +610,7 @@
       p.shots++;
       p.pots++;
       S.last = { type: 'made', id: p.id, name: p.name, lives: p.lives, bonus: S.turnBonus };
-      S.log.push({ p: p.id, a: 'made', l: p.lives });
+      S.log.push({ p: p.id, t: Date.now(), a: 'made', l: p.lives });
       advance();
     });
     buzz(12);
@@ -574,7 +633,7 @@
         p.lives++;
         p.extras++;
         S.last = { type: 'made', id: p.id, name: p.name, lives: p.lives, bonus: n };
-        S.log.push({ p: p.id, a: 'extra', l: p.lives, late: true }); // belongs to the shot just scored
+        S.log.push({ p: p.id, t: Date.now(), a: 'extra', l: p.lives, late: true }); // belongs to the shot just scored
       });
       buzz(20);
       roomSfx('extra');
@@ -589,8 +648,8 @@
       p.shots++;
       p.pots++;
       S.last = { type: 'made', id: p.id, name: p.name, lives: p.lives, bonus: 1 };
-      S.log.push({ p: p.id, a: 'extra', l: p.lives });
-      S.log.push({ p: p.id, a: 'made', l: p.lives });
+      S.log.push({ p: p.id, t: Date.now(), a: 'extra', l: p.lives });
+      S.log.push({ p: p.id, t: Date.now(), a: 'made', l: p.lives });
       advance();
     });
     buzz(20);
@@ -638,7 +697,7 @@
     prevCurrentId = null;
     const lives = gameLives(); // Rematch keeps the game length; New game goes back to Classic
     S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', startLives: lives, startedAt: Date.now(), players: names.map((n) => newPlayer(n, lives)) };
-    S.log.push({ p: S.players[0].id, a: 'rack' }); // the first shooter breaks
+    S.log.push({ p: S.players[0].id, t: Date.now(), a: 'rack' }); // the first shooter breaks
     clk = null;
     save();
     render();
@@ -894,8 +953,18 @@
 
   function renderSetup() {
     const hadFocus = document.activeElement && document.activeElement.id === 'nameInput';
+    syncGroupTier();
     const r = S.roster;
     const saved = loadRoster();
+    const lives = gameLives();
+    const clockSecs = clockPrefs.on ? clockPrefs.secs : 0;
+    let est = '';
+    if (r.length >= 2) {
+      const bits = [`⌛ <b>About ${estimateText(r.length, lives, clockSecs)}</b>`];
+      if (lives < START_LIVES && groupTier(r.length)) bits.push(`Classic would take ${estimateText(r.length, START_LIVES, 0)}`);
+      else if (!clockSecs && r.length >= CLOCK_TIP_AT) bits.push('a shot clock would speed it up');
+      est = `<p class="est">${bits.map((b) => `<span>${b}</span>`).join(' · ')}</p>`;
+    }
 
     const list = r.length
       ? `<ol class="roster ${shuffling ? 'shuffling' : ''}" id="roster">${r.map((p, i) => `
@@ -938,11 +1007,12 @@
         </div>
 
         ${list}
+        <button class="link-btn setup-rules" data-do="rules">📖 How to play</button>
 
         <div class="setup-foot">
-          ${modesUnlocked ? `
+          ${modesShown() ? `
           <div class="seg seg-sm mode-seg" role="radiogroup" aria-label="Game length">
-            ${[3, 2, 1].map((n) => `<button role="radio" class="${gameLives() === n ? 'on' : ''}" aria-checked="${gameLives() === n}" data-do="mode" data-n="${n}"><span>${MODE_ICON[n] ? `<i aria-hidden="true">${MODE_ICON[n]}</i>` : ''}${MODES[n]}</span><small>${n} ${n === 1 ? 'life' : 'lives'}</small></button>`).join('')}
+            ${[3, 2, 1].map((n) => `<button role="radio" class="${gameLives() === n ? 'on' : ''}" aria-checked="${gameLives() === n}" data-do="mode" data-n="${n}"><span><i aria-hidden="true"${MODE_ICON[n] ? '' : ' class="ball"'}>${MODE_ICON[n] || '🎱'}</i>${MODES[n]}</span><small>${n} ${n === 1 ? 'life' : 'lives'}</small></button>`).join('')}
           </div>` : ''}
           <div class="clock-setting">
             <button class="switch${clockPrefs.on ? ' on' : ''}" data-do="clockToggle" role="switch" aria-checked="${clockPrefs.on}" aria-label="Shot clock"><i></i></button>
@@ -953,12 +1023,17 @@
               <button data-do="clockMore" aria-label="More time" ${clockPrefs.secs >= CLOCK_MAX ? 'disabled' : ''}>+</button>
             </div>
           </div>
+          ${est}
           <button class="btn btn-start" data-do="start" ${r.length < 2 ? 'disabled' : ''}>
             ${r.length < 2 ? 'Add at least 2 players' : `${MODE_ICON[gameLives()] ? `<span class="start-mode" aria-hidden="true"><i>${MODE_ICON[gameLives()]}</i></span>` : ''}Rack ’em · ${r.length} players`}
           </button>
         </div>
       </section>`;
 
+    if (groupChanged) {
+      groupChanged = false;
+      $('.setup-foot').classList.add('group-changed');
+    }
     if (hadFocus) $('#nameInput').focus();
   }
 
@@ -1748,6 +1823,38 @@
           <button class="sheet-btn primary still-yes" data-sheet="pickMe" data-name="${esc(p.name)}">Yes, I’m ${esc(p.name)}</button>
           <button class="sheet-btn" data-sheet="someoneElse">Someone else<small>Pick from the player list</small></button>
           <button class="link-btn" data-sheet="pickMe" data-name="">I’m just watching</button>
+          <button class="link-btn" data-sheet="rules">📖 How to play</button>
+        </div>`;
+      return;
+    }
+
+    // How to play, with this game's lives and shot clock
+    if (sheetMode.type === 'rules') {
+      try { localStorage.setItem(RULES_KEY, '1'); } catch (_) { /* ignore */ }
+      const lives = S.phase === 'setup' ? gameLives() : (S.startLives || START_LIVES);
+      const icon = MODE_ICON[lives] ? `${MODE_ICON[lives]} ` : '';
+      const start = { 2: ' Blitz starts everyone on a /.', 1: ' Sudden death starts everyone on an X.' }[lives] || '';
+      const key = (l, text) => `<span>${marks({ id: '', lives: l })}${text}</span>`;
+      sheet.innerHTML = `
+        <div class="sheet-body rules">
+          <div class="sheet-head">
+            <h3 class="sheet-title">${sheetMode.welcome ? `You’re in, ${esc(sheetMode.welcome)}` : 'How to play'}</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          ${sheetMode.welcome ? '<p class="sheet-note">New to Killer? Here’s the whole game.</p>' : ''}
+          <ul class="rules-list">
+            <li>Everyone shoots in turn, <b>one shot each</b>. The board shows who’s up and who’s next.</li>
+            <li><b>Sink any ball:</b> you’re safe.</li>
+            <li><b>Sink two balls in one shot:</b> you gain a life.</li>
+            <li><b>Miss:</b> you lose a life.</li>
+            <li><b>Scratch:</b> you lose a life, even if balls went in.</li>
+            <li><b>The break</b> counts like any shot. If nothing goes in, the breaker shoots again.</li>
+            <li><b>Lose your last life and you’re out.</b> The last player standing wins.</li>
+          </ul>
+          <p class="rules-game"><b>This game:</b> ${icon}${MODES[lives] || MODES[START_LIVES]}, ${lives} ${lives === 1 ? 'life' : 'lives'} each · ${clockPrefs.on ? `${clockPrefs.secs}-second shot clock. Shoot before the buzzer.` : 'no shot clock.'}</p>
+          <div class="rules-key">${key(2, 'one life gone')}${key(1, 'two gone')}${key(0, 'out')}${key(START_LIVES + 1, 'a bonus life')}</div>
+          ${start ? `<p class="sheet-note">${start.trim()}</p>` : ''}
+          ${sheetMode.welcome ? '<button class="btn btn-start rules-ok" data-sheet="close">Got it</button>' : ''}
         </div>`;
       return;
     }
@@ -1770,6 +1877,7 @@
           <button class="sheet-btn" data-sheet="toggleAlertSound">${me.sound ? '🔔 Alert sound' : '🔕 Alert sound'} ${onOff(me.sound)}<small>A ping when you’re on deck and when it’s your turn (only on this phone)</small></button>
           ${partyOn() ? `<button class="sheet-btn" data-sheet="toggleParty">🎉 Room sound ${onOff(partyJoined)}<small>Party mode: play the room’s sounds on this phone, in time with everyone else</small></button>` : ''}
           <button class="link-btn" data-sheet="pickMe" data-name="">I’m just watching</button>
+          <button class="link-btn" data-sheet="rules">📖 How to play</button>
         </div>`;
       return;
     }
@@ -2007,6 +2115,7 @@
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
           <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && soundOn && roomSound !== 'phone' ? ({ tv: 'Playing on the TV screen', both: 'Playing here and on the TV screen', everyone: 'Party mode: playing on every device' })[roomSound] + ' (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
+          <button class="sheet-btn" data-sheet="rules">📖 How to play<small>The rules, with this game’s lives and shot clock</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
@@ -2036,6 +2145,7 @@
     const p = sheetMode && sheetMode.id ? byId(sheetMode.id) : null;
     switch (b.dataset.sheet) {
       case 'close': closeSheet(); break;
+      case 'rules': sheetMode = { type: 'rules' }; renderSheet(); break;
       case 'inc': if (p) setLives(p, p.lives + 1); break;
       case 'dec': if (p) setLives(p, p.lives - 1); break;
       case 'shoot': if (p) { makeShooter(p); closeSheet(); } break;
@@ -2516,8 +2626,15 @@
     flashOut.timer = setTimeout(() => flash.classList.remove('show'), 1800);
   }
 
-  function toast(msg, ms = 1600) {
+  // `above`: a selector to float the toast just over (once the next render has drawn it), instead of
+  // its usual spot, so it doesn't cover what it's talking about.
+  function toast(msg, ms = 1600, above = '') {
     toastEl.textContent = msg;
+    toastEl.style.bottom = '';
+    if (above) requestAnimationFrame(() => {
+      const el = $(above);
+      if (el) toastEl.style.bottom = `${Math.round(window.innerHeight - el.getBoundingClientRect().top + 10)}px`;
+    });
     toastEl.classList.add('show');
     clearTimeout(toast.timer);
     toast.timer = setTimeout(() => toastEl.classList.remove('show'), ms);
@@ -2637,6 +2754,7 @@
       case 'rerackTop': rerack(); toast(`🎱 Re-rack · ${current() ? current().name : ''} breaks`); break;
       case 'enableSound': tvSoundEnabled = true; unlockAudio(); sfx.extra(); render(); break;
       case 'watchEntry': openSheet({ type: 'watch' }); break;
+      case 'rules': openSheet({ type: 'rules' }); break;
       case 'whoami': openSheet({ type: 'who' }); break;
       case 'invite': openSheet({ type: 'invite' }); break;
       case 'tvMenu': openSheet({ type: 'tvmenu' }); break;

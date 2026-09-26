@@ -228,7 +228,14 @@ kbd {
 /* Phones: Shuffle, Clear and Send fit beside the heading (the smallest show just 🎲 for Shuffle) */
 @media (max-width: 420px) { .roster-tools { gap: 6px; } .roster-tools .btn { padding: 0 10px; } .roster-tools .send-list { padding: 0 9px; } }
 @media (max-width: 380px) { .roster-head h2 { font-size: 25px; letter-spacing: 0.02em; } .roster-tools { gap: 5px; } }
-@media (max-width: 340px) { .roster-tools .rt-label { display: none; } }
+@media (max-width: 340px) {
+  .roster-tools .rt-label { display: none; }
+  /* The smallest phones: room for the shot clock label and a skull or bolt on Rack 'em */
+  body .setup-foot .cs-label { font-size: 14px; }
+  body .setup-foot .cs-stepper button { width: 30px; height: 30px; }
+  body .setup-foot .cs-stepper b { font-size: 18px; }
+  body .setup-foot .btn-start { font-size: 25px; letter-spacing: 0.02em; }
+}
 
 .roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .roster li {
@@ -306,9 +313,18 @@ kbd {
 .setup-foot .clock-setting { margin-bottom: 10px; padding: 4px 6px 4px 10px; }
 .setup-foot .cs-stepper button { width: 34px; height: 34px; border-radius: 10px; font-size: 18px; }
 .setup-foot .cs-stepper b { font-size: 21px; }
-/* Game length (once unlocked): one slim row above the shot clock */
+/* Big group: the settings that just changed glow for a moment */
+.group-changed .mode-seg, .group-changed .clock-setting { animation: groupGlow 1.4s ease-in-out 3; }
+@keyframes groupGlow { 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(245, 197, 66, 0.45); } }
+/* Estimated game length, just above Rack 'em */
+.setup-foot .est { margin: -2px 2px 10px; font-size: 13px; line-height: 1.35; color: var(--chalk-dim); text-align: center; }
+.setup-foot .est b { color: var(--chalk); }
+.setup-foot .est span { white-space: nowrap; } /* wrap between the parts, never inside a time range */
+/* Game length (once unlocked, or for a big group): one slim row above the shot clock */
 .setup-foot .seg.mode-seg { width: 100%; margin: 0 0 12px; }
 .mode-seg i { font-style: normal; margin-right: 4px; }
+/* On the light selected pill, the icon sits in a dark disc (as on Rack 'em) so the yellow bolt stays visible (the black 8-ball shows fine without it) */
+.mode-seg button.on i:not(.ball) { display: inline-grid; place-items: center; width: 1.45em; height: 1.45em; margin: -0.2em 4px -0.2em 0; border-radius: 50%; background: #1a1308; font-size: 0.85em; line-height: 1; vertical-align: middle; }
 .setup-foot .mode-seg button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 3px 6px; font-size: 14px; line-height: 1.15; }
 .mode-seg small { font-size: 11px; font-weight: 600; opacity: 0.75; }
 .mode-tag { font-size: 15px; line-height: 1; }
@@ -1152,6 +1168,7 @@ body.page-locked { position: fixed; left: 0; right: 0; overflow: hidden; }
   text-align: center;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast { max-width: calc(100vw - 32px); width: max-content; text-align: center; }
 @media (min-width: 960px) { #toast { bottom: 28px; } }
 
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
@@ -1857,3 +1874,15 @@ body.tv .join-panel:has(.jp-chips) .jp-note { display: none; }
   body.tv .jp-qr svg { width: min(33vh, 22vw); }
   body.tv .join-panel:has(.jp-chips) .jp-qr svg { width: min(22vh, 18vw); }
 }
+
+/* How to play */
+.rules-list { margin: 12px 0 0; padding: 0 0 0 20px; display: grid; gap: 7px; font-size: 15px; line-height: 1.4; color: var(--chalk-dim); }
+.rules-list b { color: var(--chalk); }
+.rules-game { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(245, 197, 66, 0.1); border: 1px solid rgba(245, 197, 66, 0.3); font-size: 14px; line-height: 1.4; }
+.rules-game b { color: var(--gold); }
+.rules-key { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 12px 0 0; font-size: 13px; color: var(--chalk-dim); }
+.rules-key > span { display: flex; align-items: center; gap: 8px; }
+.rules-key .chalk { width: 32px; height: 32px; }
+.rules-key .chip { height: 26px; min-width: 32px; font-size: 13px; }
+.rules-ok { width: 100%; margin-top: 16px; }
+.setup-rules { margin: 10px auto 0; }
