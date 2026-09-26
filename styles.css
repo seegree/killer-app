@@ -1808,7 +1808,8 @@ body.tv .join-panel {
 .jp-title { font-family: var(--display); font-size: clamp(24px, 4.2vh, 52px); letter-spacing: 0.06em; line-height: 1; color: var(--gold); }
 .jp-qr svg { display: block; width: min(38vh, 26vw); height: auto; padding: 12px; border-radius: 18px; background: #fff; }
 .jp-hint { max-width: min(38vh, 26vw); margin-bottom: -0.4vh; font-size: clamp(12px, 1.5vh, 17px); font-weight: 600; line-height: 1.3; color: var(--chalk-dim); }
-.jp-hint b { color: var(--chalk); }
+.jp-hint b { color: var(--chalk); white-space: nowrap; }
+.jp-hint b span { margin-right: 0.3em; }
 .jp-code { font-family: var(--display); font-size: clamp(30px, 5.4vh, 70px); letter-spacing: 0.18em; text-indent: 0.18em; line-height: 1; color: var(--gold); }
 .jp-note { font-size: clamp(13px, 1.7vh, 20px); font-weight: 600; color: var(--chalk-dim); }
 body.tv:has(.join-panel) .topbar .tv-join { display: none; }
