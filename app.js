@@ -25,7 +25,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = () => Math.random().toString(36).slice(2, 10);
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // TV mode hides the tap buttons and relies on the keyboard, so only offer it
+  // The big board hides the tap buttons and relies on the keyboard, so only offer it
   // on devices with a mouse or trackpad (laptops/desktops), not phones or tablets.
   const canTV = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   // The TV display (a watch link with &tv) uses the big-screen layout whenever it's landscape,
@@ -166,7 +166,7 @@
     try { localStorage.setItem(ROSTER_KEY, JSON.stringify(names)); } catch (_) { /* ignore */ }
   }
 
-  // TV mode is a view preference, so Undo never flips it.
+  // The big board is a view preference, so Undo never flips it.
   // The shot log only ever grows, so snapshots store its length rather than a copy.
   function snapshot() {
     const { tv, log, ...rest } = S;
@@ -705,7 +705,7 @@
     if (S.tv) {
       const el = document.documentElement;
       if (el.requestFullscreen && window.matchMedia('(pointer: fine)').matches) el.requestFullscreen().catch(() => {});
-      toast('TV mode · T or Esc to exit');
+      toast('Big board · T or Esc to exit');
     } else {
       exitFullscreen();
     }
@@ -1032,12 +1032,12 @@
           ${tvOn()
             ? WATCH_TV
               ? `<div class="top-actions"><div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b>${watchCount() ? `<i>${watchCount()} watching</i>` : ''}</span></div><button class="icon-btn tv-more" data-do="tvMenu" aria-label="More options">⋯</button></div>`
-              : `<div class="top-actions">${share && !bigQr ? `<div class="tv-join">${qrSvg(watchLink(share.code, false))}<span>Scan to watch<b>${esc(share.code)}</b></span></div>` : ''}<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button></div>`
+              : `<div class="top-actions">${share && !bigQr ? `<div class="tv-join">${qrSvg(watchLink(share.code, false))}<span>Scan to watch<b>${esc(share.code)}</b></span></div>` : ''}<button class="btn btn-ghost btn-sm" data-do="tv">Exit big board</button></div>`
             : WATCH
-              ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">📺 TV</button>' : ''}<button class="btn btn-ghost btn-sm invite-btn" data-do="invite" aria-label="Invite people to watch"><span aria-hidden="true">📲</span><span class="invite-label">Invite</span></button><span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
+              ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv" title="Big board (T)">🖥️ Big board</button>' : ''}<button class="btn btn-ghost btn-sm invite-btn" data-do="invite" aria-label="Invite people to watch"><span aria-hidden="true">📲</span><span class="invite-label">Invite</span></button><span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
               : `<div class="top-actions">
                   <button class="btn btn-ghost btn-sm top-extra" data-do="rerackTop" title="Re-rack (B)">🎱 Re-rack</button>
-                  ${canTV() ? '<button class="btn btn-ghost btn-sm top-extra" data-do="tv" title="TV mode (T)">📺 TV</button>' : ''}
+                  ${canTV() ? '<button class="btn btn-ghost btn-sm top-extra" data-do="tv" title="Big board (T)">🖥️ Big board</button>' : ''}
                   <button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>
                 </div>`}
         </header>
@@ -1087,7 +1087,7 @@
           </section>
         </div>
 
-        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit TV</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit big board</span></footer>` : ''}
       </section>`;
   }
 
@@ -1900,13 +1900,13 @@
                 <div class="cs-row">
                   <span>Room sound plays on</span>
                   <div class="seg seg-sm" role="radiogroup" aria-label="Room sound plays on">
-                    <button role="radio" class="${roomSound === 'phone' ? 'on' : ''}" aria-checked="${roomSound === 'phone'}" data-sheet="roomPhone">This phone</button>
+                    <button role="radio" class="${roomSound === 'phone' ? 'on' : ''}" aria-checked="${roomSound === 'phone'}" data-sheet="roomPhone">This device</button>
                     <button role="radio" class="${roomSound === 'tv' ? 'on' : ''}" aria-checked="${roomSound === 'tv'}" data-sheet="roomTv">TV screen</button>
                     <button role="radio" class="${roomSound === 'both' ? 'on' : ''}" aria-checked="${roomSound === 'both'}" data-sheet="roomBoth">Both</button>
                     ${partyUnlocked ? `<button role="radio" class="${roomSound === 'everyone' ? 'on' : ''}" aria-checked="${roomSound === 'everyone'}" data-sheet="roomEveryone">Everyone 🎉</button>` : ''}
                   </div>
                 </div>
-                ${roomSound === 'tv' ? '<p class="sheet-note">This phone stays quiet. Click the TV screen once to allow sound.</p>' : ''}
+                ${roomSound === 'tv' ? '<p class="sheet-note">This device stays quiet. Click the TV screen once to allow sound.</p>' : ''}
                 ${roomSound === 'both' || roomSound === 'everyone' ? `
                   <div class="cs-row">
                     <span>Sync delay</span>
@@ -1917,8 +1917,8 @@
                     </div>
                   </div>
                   <p class="sheet-note">${roomSound === 'everyone'
-                    ? 'Party mode: plays on this phone, the TV screen and every watching phone that joins in, all together, this long after each tap. Watchers get a “Join the room sound” button.'
-                    : 'Plays on this phone and the TV screen together, this long after each tap, so both play at once. Click the TV screen once to allow sound there.'}</p>` : ''}
+                    ? 'Party mode: plays on this device, the TV screen and every watching phone that joins in, all together, this long after each tap. Watchers get a “Join the room sound” button.'
+                    : 'Plays on this device and the TV screen together, this long after each tap, so both play at once. Click the TV screen once to allow sound there.'}</p>` : ''}
               </div>` : ''}
 
             <button class="sheet-btn danger" data-sheet="stopShare">Stop sharing<small>The links stop working</small></button>
@@ -1986,7 +1986,7 @@
             <input type="text" data-multi placeholder="Add a late player" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Late player name">
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
-          ${canTV() ? `<button class="sheet-btn" data-sheet="tv">📺 TV mode<small>Big board for a TV or laptop — drive it with the keyboard</small></button>` : ''}
+          ${canTV() ? `<button class="sheet-btn" data-sheet="tv">🖥️ Big board<small>The whole game, big, for a laptop (or a TV plugged into one); drive it with the keyboard</small></button>` : ''}
           <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Enter a code to watch someone else’s game live</small></button>
           <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
@@ -1995,7 +1995,7 @@
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
           <div class="keys">
-            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> TV mode</span>
+            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> Big board</span>
           </div>
           <p class="sheet-note">Tip: tap any player on the board to fix their lives.</p>
         </div>`;
