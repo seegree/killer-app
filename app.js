@@ -2771,7 +2771,11 @@
   const awayFor = () => (WATCH && remote.status === 'live' && S.phase === 'playing' && remoteMeta.alive
     ? Math.max(0, Date.now() + serverOffset() - remoteMeta.alive) : 0);
   const isAway = () => awayFor() > AWAY_MS;
-  const fmtAway = (ms) => { const t = Math.floor(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  const fmtAway = (ms) => {
+    const t = Math.floor(ms / 1000);
+    if (t >= 3600) return `${Math.floor(t / 3600)} h ${Math.floor((t % 3600) / 60)} min`;
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  };
 
   function awayBanner() {
     return `
