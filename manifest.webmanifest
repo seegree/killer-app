@@ -4,6 +4,7 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "capture_links": "existing-client-navigate",
   "orientation": "any",
   "background_color": "#08120e",
   "theme_color": "#08120e",
