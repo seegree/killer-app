@@ -322,6 +322,7 @@
     me.codes[WATCH] = name;
     if (name) me.name = name;
     saveMe();
+    if (window.killerLive) window.killerLive.updateWatch(WATCH, { name }).catch(() => {});
     alerted.deck = alerted.up = null;
     dismissed.deck = dismissed.up = null;
     closeSheet();
@@ -1019,6 +1020,7 @@
         <div class="jp-qr">${qrSvg(watchLink(joinCode, false))}</div>
         <div class="jp-code">${esc(joinCode)}</div>
         <div class="jp-note">Follow the game live on your phone</div>
+        ${watchingText() ? `<div class="jp-watching">${esc(watchingText())}</div>` : ''}
       </aside>` : '';
 
     app.innerHTML = `
@@ -1028,7 +1030,7 @@
           <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out${MODE_ICON[S.startLives] ? `<i aria-hidden="true">·</i><span class="mode-tag" title="${MODES[S.startLives]}: ${S.startLives} ${S.startLives === 1 ? 'life' : 'lives'} each">${MODE_ICON[S.startLives]}</span>` : ''}</div>
           ${tvOn()
             ? WATCH_TV
-              ? `<div class="top-actions"><div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b></span></div><button class="icon-btn tv-more" data-do="tvMenu" aria-label="More options">⋯</button></div>`
+              ? `<div class="top-actions"><div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b>${watchCount() ? `<i>${watchCount()} watching</i>` : ''}</span></div><button class="icon-btn tv-more" data-do="tvMenu" aria-label="More options">⋯</button></div>`
               : `<div class="top-actions">${share && !bigQr ? `<div class="tv-join">${qrSvg(watchLink(share.code, false))}<span>Scan to watch<b>${esc(share.code)}</b></span></div>` : ''}<button class="btn btn-ghost btn-sm" data-do="tv">Exit TV</button></div>`
             : WATCH
               ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv">📺 TV</button>' : ''}<button class="btn btn-ghost btn-sm invite-btn" data-do="invite" aria-label="Invite people to watch"><span aria-hidden="true">📲</span><span class="invite-label">Invite</span></button><span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
@@ -1783,6 +1785,23 @@
       return;
     }
 
+    // The first watcher in line, when the scorekeeper has gone quiet
+    if (sheetMode.type === 'backup') {
+      const idx = watchLine().findIndex((w) => w.id === myWatchId());
+      const name = me.codes[WATCH] || '';
+      sheet.innerHTML = `
+        <div class="sheet-body backup-ask">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Keep it going?</h3>
+          </div>
+          <p class="backup-lead">📵 The scorekeeper’s phone went quiet ${fmtAway(awayFor())} ago.</p>
+          <p class="sheet-note">You’re ${idx > 0 ? 'next' : 'first'} in line to take over scoring. You’ll carry on from the latest score${name ? ` as ${esc(name)}` : ''}, and everyone’s link keeps working.</p>
+          <button class="btn btn-start takeover-go" data-sheet="takeover" data-name="${esc(name)}">Take over scoring</button>
+          <button class="link-btn" data-sheet="backupNo">Not me</button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'takeoverQuick') {
       const name = me.codes[WATCH] || '';
       sheet.innerHTML = `
@@ -1861,6 +1880,7 @@
             <div class="share-qr${tvSetupOpen ? ' mini' : ''}">${qrSvg(shareLink())}</div>
             <div class="share-code" aria-label="Game code">${esc(share.code)}</div>
             <p class="share-status ${shareStatus}">${status}</p>
+            ${watchingText() ? `<p class="share-watching">${esc(watchingText())}</p>` : ''}
             </div>
             <div class="share-right">
             <div class="share-actions">
@@ -2032,6 +2052,10 @@
       }
       case 'takeoverAsk': sheetMode = { type: 'takeover' }; renderSheet(); break;
       case 'qrSize': closeSheet(); toggleQr(); break;
+      case 'backupNo':
+        closeSheet();
+        if (window.killerLive) window.killerLive.updateWatch(WATCH, { declined: true }).catch(() => {});
+        break;
       case 'takeover': takeOver(b.dataset.name || ''); break;
       case 'tvSetup': tvSetupOpen = !tvSetupOpen; renderSheet(); break;
       case 'leadLess': case 'leadMore':
@@ -2784,6 +2808,7 @@
         // The code belongs to another game (or this phone's ID changed): switch to a fresh code.
         share = { code: newCode() };
         saveShare();
+        followWatchers(share.code);
         toast('Sharing moved to a new code');
         if (sheet.open) renderSheet();
         return publishNow();
@@ -2823,14 +2848,18 @@
     return `
       <div class="away-banner" role="status">
         <span>⏸ Scorekeeper away · <b id="awayFor">${fmtAway(awayFor())}</b></span>
-        ${WATCH_TV ? '<button class="btn btn-brass" data-do="takeoverOpen">Take over scoring here</button>' : ''}
+        ${WATCH_TV ? '<button class="btn btn-brass" data-do="takeoverOpen">Take over scoring here</button>'
+          : everyoneMayTake() ? '<button class="btn btn-brass" data-do="takeoverOpen">Take over scoring</button>' : ''}
       </div>`;
   }
 
   let wasAway = false;
+  let wasEveryone = false;
   function updateAway() {
     const away = isAway();
-    if (away !== wasAway) { wasAway = away; render(); return; }
+    checkBackup();
+    const everyone = everyoneMayTake();
+    if (away !== wasAway || everyone !== wasEveryone) { wasAway = away; wasEveryone = everyone; render(); return; }
     const el = document.getElementById('awayFor');
     if (el) el.textContent = fmtAway(awayFor());
   }
@@ -2890,6 +2919,73 @@
     return true;
   }
 
+  // ---------------------------------------------------------------- who's watching / backup scorekeeper
+  // Watching phones check in, and every screen sees the same list, oldest first. When the scorekeeper
+  // goes quiet, only the first watcher in line (not TV displays, not anyone who said "Not me") is asked
+  // to take over; after a minute the next in line is asked too, and after two minutes anyone watching
+  // can take over from the away notice.
+  let watchers = [];
+  let stopWatchers = null;
+  const BACKUP_STAGES = [[AWAY_MS, 0], [60000, 1]]; // [away for more than, how far down the line is asked]
+  const EVERYONE_MS = 120000;
+  const myWatchId = () => (window.killerLive ? window.killerLive.myId() : null);
+  const myEntry = () => watchers.find((w) => w.id === myWatchId());
+  const byJoin = (a, b) => (a.at || 0) - (b.at || 0) || String(a.id).localeCompare(String(b.id));
+  const watchLine = () => watchers.filter((w) => !w.tv && !w.declined).sort(byJoin);
+  const watchCount = () => watchers.filter((w) => !w.tv).length;
+
+  function backupAsked() {
+    if (!WATCH || WATCH_TV || !isAway()) return false;
+    const idx = watchLine().findIndex((w) => w.id === myWatchId());
+    return idx >= 0 && BACKUP_STAGES.some(([ms, upTo]) => awayFor() > ms && idx <= upTo);
+  }
+  const everyoneMayTake = () => WATCH && !WATCH_TV && awayFor() > EVERYONE_MS && !(myEntry() && myEntry().declined);
+
+  let backupShown = false;
+  function checkBackup() {
+    const mine = myEntry();
+    if (!isAway() && mine && mine.declined && window.killerLive) {
+      window.killerLive.updateWatch(WATCH, { declined: false }).catch(() => {}); // back in line next time
+    }
+    const ask = backupAsked();
+    if (ask && !backupShown && !sheet.open) {
+      backupShown = true;
+      buzz([200, 100, 200, 100, 200]);
+      sfx.up();
+      openSheet({ type: 'backup' });
+    } else if (!ask && backupShown) {
+      backupShown = false;
+      if (sheet.open && sheetMode && sheetMode.type === 'backup') closeSheet();
+    }
+  }
+
+  // "Bob, Jill & Mack are watching" / "Jeff, Jim, Kate & 18 others are watching" / "5 people are watching"
+  function watchingText() {
+    const list = watchers.filter((w) => !w.tv).sort(byJoin);
+    const n = list.length;
+    if (!n) return '';
+    const named = list.map((w) => w.name).filter(Boolean);
+    const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} & ${xs[xs.length - 1]}` : xs[0]);
+    if (!named.length) return `${n} ${n === 1 ? 'person is' : 'people are'} watching`;
+    if (named.length === n && n <= 4) return `${and(named)} ${n === 1 ? 'is' : 'are'} watching`;
+    const shown = named.slice(0, 3);
+    const rest = n - shown.length;
+    return `${shown.join(', ')} & ${rest} ${rest === 1 ? 'other' : 'others'} are watching`;
+  }
+
+  function followWatchers(code) {
+    if (stopWatchers) stopWatchers();
+    stopWatchers = code && window.killerLive ? window.killerLive.watchWatchers(code, (list) => {
+      watchers = list;
+      checkBackup();
+      if (tvOn() || (sheet.open && sheetMode && sheetMode.type === 'share')) {
+        if (sheet.open && sheetMode && sheetMode.type === 'share') renderSheet();
+        if (tvOn()) render();
+      }
+    }) : null;
+    if (!code) watchers = [];
+  }
+
   // One-off notes after a takeover reload
   try {
     if (sessionStorage.getItem(TOOK_KEY)) { sessionStorage.removeItem(TOOK_KEY); setTimeout(() => toast('🎱 You’re scoring now', 3500), 600); }
@@ -2902,6 +2998,7 @@
 
   function startSharing() {
     share = { code: newCode() };
+    followWatchers(share.code);
     shareStatus = 'connecting';
     saveShare();
     renderSheet();
@@ -2914,6 +3011,7 @@
     const live = window.killerLive;
     if (share && live) live.stop(share.code).catch(() => {});
     share = null;
+    followWatchers(null);
     saveShare();
     closeSheet();
     render();
@@ -3009,11 +3107,13 @@
       remote.status = 'missing';
       render();
     }, applyMeta);
+    window.killerLive.joinWatch(WATCH, { name: me.codes[WATCH] || '', tv: WATCH_TV }).catch(() => {});
+    followWatchers(WATCH);
   }
 
   function onLiveReady() {
     if (WATCH) startWatching();
-    else if (share) publishNow();
+    else if (share) { publishNow(); followWatchers(share.code); }
     if (!WATCH) window.killerLive.onConnected(setConnected);
   }
 

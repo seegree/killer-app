@@ -1825,3 +1825,10 @@ body.tv:has(.join-panel) .topbar .tv-join { display: none; }
   body.tv .now-row .now-next,
   body.tv .now-row .now-felt .clock-actions { font-size: clamp(34px, 7vh, 100px); }
 }
+
+/* Who's watching: under the big TV QR, beside the small one, and in the scorekeeper's Share panel */
+.jp-watching { max-width: min(38vh, 26vw); font-size: clamp(13px, 1.7vh, 20px); font-weight: 700; line-height: 1.3; color: var(--gold); }
+.tv-join i { font-style: normal; font-size: 11px; font-weight: 700; color: var(--gold); }
+.share-watching { margin: 4px 0 0; font-size: 13px; font-weight: 700; color: var(--gold); }
+/* The backup scorekeeper's prompt */
+.backup-ask .backup-lead { margin: 4px 0 10px; font-size: 18px; font-weight: 800; color: var(--gold); }

@@ -3,7 +3,7 @@
 // Firebase web settings are public by design; the database rules decide who may write.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { getDatabase, ref, set, get, remove, onValue, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { getDatabase, ref, set, get, update, remove, onValue, onDisconnect, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 
 const firebaseApp = initializeApp({
   apiKey: 'AIzaSyA-qlfDzz8rTKS6tKBIGlFn68hoc2Kn60Q',
@@ -71,6 +71,31 @@ window.killerLive = {
   async stop(code) {
     await uid();
     await remove(gameRef(code));
+  },
+
+  // Watchers check in (join time, name, whether it's a TV display) and are checked out by the
+  // server the moment their connection drops. Re-checks in after a reconnect.
+  async joinWatch(code, info) {
+    const me = await uid();
+    const r = ref(db, `watchers/${code}/${me}`);
+    const checkIn = async () => {
+      await onDisconnect(r).remove();
+      await set(r, { at: serverTimestamp(), name: (info.name || '').slice(0, 40), tv: !!info.tv, declined: false });
+    };
+    connectionWatchers.add((c) => { if (c) checkIn().catch(() => {}); });
+    if (connected) await checkIn();
+  },
+  async updateWatch(code, patch) {
+    const me = await uid();
+    if (typeof patch.name === 'string') patch = { ...patch, name: patch.name.slice(0, 40) };
+    await update(ref(db, `watchers/${code}/${me}`), patch);
+  },
+  // Calls onList([{ id, at, name, tv, declined }]) with everyone watching, whenever it changes.
+  watchWatchers(code, onList) {
+    return onValue(ref(db, `watchers/${code}`), (snap) => {
+      const v = snap.val() || {};
+      onList(Object.entries(v).map(([id, w]) => ({ id, ...w })));
+    }, () => onList([]));
   },
 
   // Calls onMeta({ alive, scorer }) on every change, onState(state) when the game itself changed
