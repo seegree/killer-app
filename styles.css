@@ -811,7 +811,9 @@ body.tv .pill b { font-size: 20px; }
    doesn't fit, only the player list scrolls */
 body.tv .game { height: 100dvh; min-height: 0; overflow: hidden; }
 body.tv .stage { min-height: 0; }
-body.tv .board { flex: 1; min-height: 0; overflow-y: auto; padding-top: 8px; margin-top: -8px; }
+/* Room inside the scroll area for the current player's gold ring and glow (a scroll area clips
+   whatever sticks out), cancelled by the negative margin so the cards don't move */
+body.tv .board { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 10px 12px; margin: -10px -10px 0; }
 
 /* ------------------------------------------------------------------ winner */
 /* The poster has its own ink background, so the page goes flat ink to match. */
@@ -1365,7 +1367,7 @@ body.watch .pc:active { transform: none; }
   body.tv .now-next { font-size: max(18px, 8vh); margin-top: 1vh; }
   body.tv .clock { font-size: max(18px, 8vh); top: 4px; right: 6px; }
   body.tv .clock-bar { height: 6px; }
-  body.tv .board { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: 8px; }
+  body.tv .board { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px; margin: 0 -8px; }
   body.tv .board-grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
   body.tv .pc { min-height: max(34px, 11vh); padding: 3px 6px 3px 10px; border-radius: 10px; }
   body.tv .pc-name { font-size: calc(max(17px, 6vh) * var(--nfit, 1)); }
