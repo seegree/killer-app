@@ -1788,6 +1788,9 @@ body.tv .away-banner .btn { min-height: 56px; padding: 0 28px; font-size: clamp(
 body.tv .now-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: stretch; }
 body.tv .now-row > .now { grid-column: 1; grid-row: 1; } /* .now carries an order from the phone layout */
 body.tv .now-row > .join-panel { grid-column: 2; grid-row: 1; }
+/* The chalkboard grows to the panel's height: the felt fills the frame, content centred */
+body.tv .now-row > .now { display: flex; }
+body.tv .now-row .now-felt { flex: 1; display: flex; flex-direction: column; justify-content: center; }
 body.tv .join-panel {
   display: flex;
   flex-direction: column;
