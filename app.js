@@ -602,6 +602,23 @@
 
   // ---------------------------------------------------------------- game management
 
+  // Hand the list to someone else: "Chris, Dave, Sam, …", which their name box splits back out.
+  function sendList() {
+    const names = S.roster.map((r) => r.name);
+    if (!names.length) return;
+    const text = names.join(', ');
+    const copied = () => toast(`📋 Copied ${names.length} ${names.length === 1 ? 'name' : 'names'}`);
+    if (navigator.share) {
+      navigator.share({ text }).catch((err) => { if (!err || err.name !== 'AbortError') copyText(text, copied); });
+    } else copyText(text, copied);
+  }
+  function copyText(text, done) {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => (copyWithSelection(text) ? done() : window.prompt('Copy the list:', text)));
+    } else if (copyWithSelection(text)) done();
+    else window.prompt('Copy the list:', text);
+  }
+
   function startGame() {
     if (S.roster.length < 2) return;
     saveRoster(S.roster.map((r) => r.name));
@@ -914,8 +931,9 @@
         <div class="roster-head">
           <h2>Players <span class="count">${r.length}</span></h2>
           <div class="roster-tools">
-            <button class="btn btn-ghost" data-do="shuffle" ${r.length < 2 ? 'disabled' : ''}><span aria-hidden="true">🎲</span>Shuffle</button>
+            <button class="btn btn-ghost" data-do="shuffle" aria-label="Shuffle" ${r.length < 2 ? 'disabled' : ''}><span aria-hidden="true">🎲</span><span class="rt-label">Shuffle</span></button>
             <button class="btn btn-ghost" data-do="clear" ${r.length ? '' : 'disabled'}>Clear</button>
+            ${r.length ? '<button class="btn btn-ghost send-list" data-do="sendList" aria-label="Send this player list" title="Send this list (paste it into the name box on another phone)">📤</button>' : ''}
           </div>
         </div>
 
@@ -2583,6 +2601,7 @@
 
     switch (t.dataset.do) {
       case 'shuffle': shuffleRoster(); break;
+      case 'sendList': sendList(); break;
       case 'clear':
         if (confirmTap(t, 'clear')) { S.roster = []; save(); render(); }
         break;

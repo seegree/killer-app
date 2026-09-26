@@ -224,7 +224,11 @@ kbd {
 }
 .roster-tools { display: flex; gap: 8px; }
 .roster-tools .btn { min-height: 42px; padding: 0 14px; font-size: 14px; }
-@media (max-width: 360px) { .roster-tools .btn { padding: 0 10px; } } /* the smallest phones: Shuffle and Clear fit beside the heading */
+.roster-tools .send-list { padding: 0 12px; font-size: 17px; }
+/* Phones: Shuffle, Clear and Send fit beside the heading (the smallest show just 🎲 for Shuffle) */
+@media (max-width: 420px) { .roster-tools { gap: 6px; } .roster-tools .btn { padding: 0 10px; } .roster-tools .send-list { padding: 0 9px; } }
+@media (max-width: 380px) { .roster-head h2 { font-size: 25px; letter-spacing: 0.02em; } .roster-tools { gap: 5px; } }
+@media (max-width: 340px) { .roster-tools .rt-label { display: none; } }
 
 .roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .roster li {
