@@ -2050,7 +2050,7 @@
         else copyLink(url, 'invite');
         break;
       }
-      case 'takeoverAsk': sheetMode = { type: 'takeover' }; renderSheet(); break;
+      case 'takeoverAsk': sheetMode = { type: 'takeover', since: remoteMeta.claimId }; renderSheet(); break;
       case 'qrSize': closeSheet(); toggleQr(); break;
       case 'backupNo':
         closeSheet();
@@ -2599,7 +2599,7 @@
       case 'whoami': openSheet({ type: 'who' }); break;
       case 'invite': openSheet({ type: 'invite' }); break;
       case 'tvMenu': openSheet({ type: 'tvmenu' }); break;
-      case 'takeoverOpen': openSheet({ type: 'takeover' }); break;
+      case 'takeoverOpen': openSheet({ type: 'takeover', since: remoteMeta.claimId }); break;
       case 'joinParty': partyJoined = true; unlockAudio(); sfx.extra(); render(); break;
       case 'declineParty': partyDeclined = true; partyJoined = false; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
@@ -2872,7 +2872,10 @@
     if (remoteMeta.claimId === null) {
       // Joining: only mention a takeover that just happened
       if (id && c.at && Date.now() + serverOffset() - c.at < 60000) announceScorer(c.name);
-    } else if (id && id !== remoteMeta.claimId) announceScorer(c.name);
+    } else if (id && id !== remoteMeta.claimId) {
+      announceScorer(c.name);
+      if (sheet.open && sheetMode && ['backup', 'takeover', 'takeoverQuick'].includes(sheetMode.type)) closeSheet();
+    }
     remoteMeta.claimId = id;
     updateAway();
   }
@@ -2882,6 +2885,9 @@
   async function takeOver(name) {
     const live = window.killerLive;
     if (!live || !WATCH) return;
+    // Only take over from the scorer this person saw when their prompt opened (captured now, before
+    // any waiting): if someone else took over in the meantime, this tap is too late.
+    const seen = sheetMode && 'since' in sheetMode ? sheetMode.since : undefined;
     const btns = [...sheet.querySelectorAll('[data-sheet="takeover"]')];
     btns.forEach((x) => { x.disabled = true; });
     try {
@@ -2889,7 +2895,13 @@
       if (!rec) throw new Error('missing');
       const { clock, room, sfx: stamped, ...game } = rec.state;
       const claim = { name, id: newCode() };
-      await live.publish(WATCH, { ...rec.state, sfx: [] }, claim, true);
+      const since = seen !== undefined ? seen : (rec.scorer ? rec.scorer.id : null);
+      const res = await live.claim(WATCH, { ...rec.state, sfx: [] }, claim, since || null);
+      if (!res.ok) { // someone else took over a moment ago
+        closeSheet();
+        toast(res.taken && res.taken.name ? `🎱 ${res.taken.name} just took over scoring` : '🎱 Someone just took over scoring', 4000);
+        return;
+      }
       localStorage.setItem(GAME_KEY, JSON.stringify({ state: { ...freshState(), ...game, tv: false }, history: [] }));
       localStorage.setItem(SHARE_KEY, JSON.stringify({ code: WATCH, claim }));
       if (clock) localStorage.setItem(CLOCK_KEY, JSON.stringify({ on: !!clock.on, secs: clock.secs || 30 }));
@@ -2922,12 +2934,14 @@
   // ---------------------------------------------------------------- who's watching / backup scorekeeper
   // Watching phones check in, and every screen sees the same list, oldest first. When the scorekeeper
   // goes quiet, only the first watcher in line (not TV displays, not anyone who said "Not me") is asked
-  // to take over; after a minute the next in line is asked too, and after two minutes anyone watching
-  // can take over from the away notice.
+  // to take over (after a minute); after 1½ minutes the next in line is asked too, and after 2½ minutes
+  // anyone watching can take over from the away notice.
   let watchers = [];
   let stopWatchers = null;
-  const BACKUP_STAGES = [[AWAY_MS, 0], [60000, 1]]; // [away for more than, how far down the line is asked]
-  const EVERYONE_MS = 120000;
+  // The away notice shows at 30 s; take-over prompts wait longer, so a scorekeeper whose screen dozes
+  // between shots isn't bumped. [away for more than, how far down the line is asked]
+  const BACKUP_STAGES = [[60000, 0], [90000, 1]];
+  const EVERYONE_MS = 150000;
   const myWatchId = () => (window.killerLive ? window.killerLive.myId() : null);
   const myEntry = () => watchers.find((w) => w.id === myWatchId());
   const byJoin = (a, b) => (a.at || 0) - (b.at || 0) || String(a.id).localeCompare(String(b.id));
@@ -2952,7 +2966,7 @@
       backupShown = true;
       buzz([200, 100, 200, 100, 200]);
       sfx.up();
-      openSheet({ type: 'backup' });
+      openSheet({ type: 'backup', since: remoteMeta.claimId });
     } else if (!ask && backupShown) {
       backupShown = false;
       if (sheet.open && sheetMode && sheetMode.type === 'backup') closeSheet();
@@ -3091,7 +3105,8 @@
     if (TAKE_ASK && S.players.length) {
       TAKE_ASK = false;
       askedWho = true;
-      openSheet({ type: 'takeoverQuick' });
+      openSheet({ type: 'takeoverQuick', since: remoteMeta.claimId });
+      checkMyTurn();
       return;
     }
     // First time in this game: ask which player they are (skipped on the TV display).

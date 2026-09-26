@@ -3,7 +3,7 @@
 // Firebase web settings are public by design; the database rules decide who may write.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { getDatabase, ref, set, get, update, remove, onValue, onDisconnect, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
+import { getDatabase, ref, set, get, update, remove, onValue, onDisconnect, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js';
 
 const firebaseApp = initializeApp({
   apiKey: 'AIzaSyA-qlfDzz8rTKS6tKBIGlFn68hoc2Kn60Q',
@@ -25,6 +25,7 @@ async function uid() {
 }
 
 const gameRef = (code) => ref(db, `games/${code}`);
+let watchInfo = null; // this device's check-in details, kept current for re-check-ins after a reconnect
 
 // How far this device's clock is from Firebase's, so shot clocks line up on every screen.
 let offset = 0;
@@ -55,6 +56,27 @@ window.killerLive = {
     await set(gameRef(code), rec);
   },
 
+  // Take over scoring, but only if nobody else has claimed the game since `sinceId` (the scorer id we
+  // saw). Two people tapping at once: one wins, the other gets back { taken: the winner's name }.
+  async claim(code, state, scorer, sinceId) {
+    const owner = await uid();
+    let takenBy = null;
+    const res = await runTransaction(gameRef(code), (cur) => {
+      if (cur === null) return cur; // not loaded yet: Firebase retries with the server's copy
+      const curId = cur.scorer ? cur.scorer.id : null;
+      if (curId !== (sinceId || null)) { takenBy = cur.scorer; return undefined; } // someone beat us to it
+      return {
+        owner,
+        updated: serverTimestamp(),
+        alive: serverTimestamp(),
+        state: JSON.stringify(state),
+        scorer: { name: scorer.name || '', id: scorer.id, at: serverTimestamp() },
+        claim: true,
+      };
+    }, { applyLocally: false }); // no "you took over" flicker on screen before the server decides
+    return res.committed ? { ok: true } : { ok: false, taken: takenBy };
+  },
+
   // The scorekeeper's app, every few seconds while it's actually running.
   async beat(code) {
     await uid();
@@ -76,11 +98,12 @@ window.killerLive = {
   // Watchers check in (join time, name, whether it's a TV display) and are checked out by the
   // server the moment their connection drops. Re-checks in after a reconnect.
   async joinWatch(code, info) {
+    watchInfo = { ...info };
     const me = await uid();
     const r = ref(db, `watchers/${code}/${me}`);
     const checkIn = async () => {
       await onDisconnect(r).remove();
-      await set(r, { at: serverTimestamp(), name: (info.name || '').slice(0, 40), tv: !!info.tv, declined: false });
+      await set(r, { at: serverTimestamp(), name: (watchInfo.name || '').slice(0, 40), tv: !!watchInfo.tv, declined: false });
     };
     connectionWatchers.add((c) => { if (c) checkIn().catch(() => {}); });
     if (connected) await checkIn();
@@ -88,6 +111,7 @@ window.killerLive = {
   async updateWatch(code, patch) {
     const me = await uid();
     if (typeof patch.name === 'string') patch = { ...patch, name: patch.name.slice(0, 40) };
+    if (watchInfo && typeof patch.name === 'string') watchInfo.name = patch.name; // a re-check-in keeps it
     await update(ref(db, `watchers/${code}/${me}`), patch);
   },
   // Calls onList([{ id, at, name, tv, declined }]) with everyone watching, whenever it changes.
