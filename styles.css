@@ -1204,8 +1204,9 @@ body.page-locked { position: fixed; left: 0; right: 0; overflow: hidden; }
 
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
 
+/* Reduce Motion: animations jump to their end, and pulses don't loop (a looping 0.01ms pulse strobes) */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition: none !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
 
 /* ------------------------------------------------------------------ live sharing */
