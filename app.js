@@ -1216,7 +1216,7 @@
             : WATCH
               ? `<div class="top-actions">${canTV() && !WATCH_TV ? '<button class="btn btn-ghost btn-sm" data-do="tv" title="Big board (T)">🖥️ Big board</button>' : ''}<button class="btn btn-ghost btn-sm invite-btn" data-do="invite" aria-label="Invite people to watch"><span aria-hidden="true">📲</span><span class="invite-label">Invite</span></button><span class="live-pill" title="Watching game ${WATCH}"><span class="live-badge">● Live</span><button data-do="leaveWatch" aria-label="Leave the live game and go back to my own">✕</button></span></div>`
               : `<div class="top-actions">
-                  <button class="btn btn-ghost btn-sm top-extra" data-do="rerackTop" title="Re-rack (B)">🎱 Re-rack</button>
+                  <button class="btn btn-ghost btn-sm top-rerack" data-do="rerackTop" title="Re-rack (B)" aria-label="Re-rack"><span aria-hidden="true">🎱</span><span class="top-label">Re-rack</span></button>
                   ${canTV() ? '<button class="btn btn-ghost btn-sm top-extra" data-do="tv" title="Big board (T)">🖥️ Big board</button>' : ''}
                   <button class="icon-btn${share ? ' is-live' : ''}" data-do="menu" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>
                 </div>`}
@@ -1881,6 +1881,12 @@
   }
 
   const onOff = (on) => `<span class="state ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>`;
+  // Menu rows with a setting: the name, what it's set to underneath, and ON / OFF on the right.
+  // Same height either way, so the menu doesn't jump when something is switched.
+  const stateRow = (key, title, detail, on) =>
+    `<button class="sheet-btn st-row${on ? ' is-on' : ''}" data-sheet="${key}"><span class="st-text"><span class="st-title">${title}</span><small>${detail}</small></span>${onOff(on)}</button>`;
+  const soundPlace = () => (share ? ({ phone: 'This phone', tv: 'On the TV', both: 'Here &amp; TV', everyone: 'Every device' })[roomSound] || 'This phone' : 'This phone');
+  const FINALISTS_AT = 5; // Send finalists shows once a table is down to this many
   const watchLink = (code, tv) => `${location.origin}${location.pathname}?watch=${code}${tv ? '&tv' : ''}`;
   const shareLink = () => share && watchLink(share.code, false);
 
@@ -2215,20 +2221,23 @@
             <input type="text" data-multi placeholder="Add a late player" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Late player name">
             <button class="btn btn-brass" type="submit">Add</button>
           </form>
-          ${canTV() ? `<button class="sheet-btn" data-sheet="tv">🖥️ Big board<small>The whole game, big, for a laptop (or a TV plugged into one); drive it with the keyboard</small></button>` : ''}
-          <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Enter a code to watch someone else’s game live</small></button>
-          <button class="sheet-btn" data-sheet="share">📡 Share live ${onOff(!!share)}${share ? ` <span class="state-note">${esc(share.code)}</span>` : ''}<small>A live view for everyone’s phones or a TV</small></button>
-          <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
-          <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
-          <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && soundOn && roomSound !== 'phone' ? ({ tv: 'Playing on the TV screen', both: 'Playing here and on the TV screen', everyone: 'Party mode: playing on every device' })[roomSound] + ' (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
-          <button class="sheet-btn" data-sheet="finalists">📤 Send finalists<small>Everyone still in, with their lives, to merge into the other table’s game</small></button>
-          <button class="sheet-btn" data-sheet="rules">📖 How to play<small>The rules, with this game’s lives and shot clock</small></button>
-          <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
-          <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
-          <div class="keys">
-            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>T</kbd> Big board</span>
+          ${stateRow('share', '📡 Share live', share ? `Code <b class="st-code">${esc(share.code)}</b> · phones or a TV` : 'A live view for phones or a TV', !!share)}
+          <div class="menu-gap"></div>
+          <div class="menu-pair">
+            ${stateRow('clockPanel', '⏱ Clock', `${clockPrefs.secs} sec`, clockPrefs.on)}
+            ${stateRow('sound', soundOn ? '🔊 Sound' : '🔇 Sound', soundPlace(), soundOn)}
           </div>
-          <p class="sheet-note">Tip: tap any player on the board to fix their lives.</p>
+          <div class="menu-gap"></div>
+          ${aliveCount() <= FINALISTS_AT ? `<button class="sheet-btn" data-sheet="finalists">📤 Send finalists<small>Two-table match: send ${aliveCount()} to the other table</small></button>` : ''}
+          <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Peek at another table; ✕ brings you back</small></button>
+          ${canTV() ? '<button class="sheet-btn narrow-only" data-sheet="tv">🖥️ Big board<small>Full-screen board for a laptop or TV</small></button>' : ''}
+          <div class="menu-gap"></div>
+          <button class="sheet-btn danger" data-sheet="rematch">🔁 Rematch<small>Ends this game · same players, fresh lives</small></button>
+          <button class="sheet-btn danger" data-sheet="newgame">New game<small>Ends this game · back to the player list</small></button>
+          <div class="keys">
+            <span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span><span><kbd>B</kbd> Re-rack</span><span><kbd>T</kbd> Big board</span>
+          </div>
+          <div class="menu-foot"><span>Tip: tap a player to fix their lives.</span><button class="link-btn" data-sheet="rules">📖 How to play</button></div>
         </div>`;
     }
   }
@@ -2261,7 +2270,6 @@
       case 'remove': if (p && confirmTap(b, 'remove')) { removePlayer(p); closeSheet(); } break;
       case 'tv': closeSheet(); toggleTV(); break;
       case 'sound': setSound(!soundOn); renderSheet(); sfx.extra(); break;
-      case 'rerack': closeSheet(); rerack(); break;
       case 'clockPanel': openSheet({ type: 'clock' }); break;
       case 'share': openSheet({ type: 'share' }); break;
       case 'watch': openSheet({ type: 'watch' }); break;
@@ -3107,6 +3115,22 @@
     const live = window.killerLive;
     if (WATCH || !share || !live || document.visibilityState !== 'visible') return;
     live.beat(share.code).catch((err) => { if (isPermission(err)) checkTakenOver(); });
+  }, BEAT_MS);
+
+  // A scorekeeper peeking at another game (the other table, say) is still at the table: keep
+  // telling their own game's watchers so, or a long look would read as a dead phone. If someone
+  // has taken the game over since, the database refuses the signal, which is fine.
+  const ownShare = (() => {
+    if (!WATCH) return null;
+    try {
+      const own = JSON.parse(localStorage.getItem(SHARE_KEY));
+      const game = JSON.parse(localStorage.getItem(GAME_KEY));
+      return own && own.code && own.code !== WATCH && game && game.state && game.state.phase === 'playing' ? own.code : null;
+    } catch (_) { return null; }
+  })();
+  if (ownShare) setInterval(() => {
+    const live = window.killerLive;
+    if (live && document.visibilityState === 'visible') live.beat(ownShare).catch(() => {});
   }, BEAT_MS);
 
   // Watchers: how long since the scorekeeper was last heard from (0 if unknown or not playing).

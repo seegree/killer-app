@@ -18,7 +18,8 @@ There's no build step and no dependencies. The game auto-saves in the browser, s
 - **Marks:** 1 lost is `/`, 2 lost is `X`, and 3 lost is a circled X meaning OUT. Lives above 3 show as gold `+N` chips.
 - **Shot clock (optional):** switch it on above **Rack 'em** and set the seconds (default 30). Breaks aren't timed (the opening break, or the break after a re-rack). If nothing goes in on the break, tap **Dry break** (or press `D`): the breaker shoots again, and that shot is timed. Otherwise it starts when each new shooter's name appears, turns red for the last 5 seconds, and sounds a buzzer with **TIME!** at zero. It never scores anything. Tap the clock to pause it; tap again to resume. While paused you can **Re-rack** (records who breaks; their break isn't timed) or put the clock **back to** the full time.
 - **Fix mistakes:** use **Undo** (it goes back any number of steps), or tap any player to set their lives, make them the shooter, or remove them.
-- **Menu:** add a late player, re-rack, shot clock, Big board (laptops and desktops only: the whole game, big, driven by the keyboard), sound, rematch, or start a new game.
+- **Top bar:** 🎱 re-racks (it records who breaks, so the break isn't timed and Dry break shows). On laptops and desktops there's also **Big board**: the whole game, big, driven by the keyboard.
+- **Menu:** add a late player, Share live, shot clock, sound, Send finalists (once 5 or fewer are left), watch another game (your own game stays live while you look), rematch, or start a new game. How to play is at the bottom.
 - **Keyboard:** `X` miss · `Space` made · `E` extra life · `⌘Z` / `Ctrl+Z` undo · `T` big board · `P` pause/resume clock · `R` clock back to full time · `B` re-rack · `D` dry break.
 
 ## Logo and artwork
