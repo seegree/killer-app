@@ -214,7 +214,9 @@
   }
   // Big-group tier for a player count: 0 (none), 1 (Blitz), 2 (Sudden death)
   const groupTier = (n) => { const i = BIG_GROUPS.findIndex(([at]) => n >= at); return i < 0 ? 0 : BIG_GROUPS.length - i; };
-  const modesShown = () => modesUnlocked || groupTier((S.roster || []).length) > 0;
+  // Players in the game about to start: with the list split into two tables, just Table 1's
+  const startCount = () => (S.roster || []).filter((r) => r.t !== 2).length;
+  const modesShown = () => modesUnlocked || groupTier(startCount()) > 0;
   // Lives for the game about to start (Classic unless a shorter game is shown and chosen)
   const gameLives = () => (modesShown() && MODES[S.startLives] ? S.startLives : START_LIVES);
 
@@ -223,7 +225,7 @@
   // and the clock as it was before.
   let groupChanged = false;
   function syncGroupTier() {
-    const tier = groupTier(S.roster.length);
+    const tier = groupTier(startCount());
     const was = S.auto ? S.auto.tier : 0;
     if (tier === was) return;
     if (!was) S.auto = { tier, clock: { ...clockPrefs } };
@@ -329,6 +331,13 @@
       .split(/[\n,;\t]+/)
       .map((s) => s.trim().replace(/\s+/g, ' ').slice(0, 24))
       .filter(Boolean);
+  }
+
+  // "Pete [2]": a player joining with their lives (finalists sent from another table). Only square
+  // brackets count, so a player called "Dan 2" or "Dan (2)" keeps that as their name.
+  function withLives(entry) {
+    const m = entry.match(/^(.*\S)\s*\[(\d{1,2})\]$/);
+    return m ? { name: m[1], lives: Math.max(1, Number(m[2])) } : { name: entry, lives: null };
   }
 
   // "Dave", "dave" and "DAVE" match, and so do "J.J." and "JJ"; "Dave R" is a different player.
@@ -677,11 +686,23 @@
   // ---------------------------------------------------------------- game management
 
   // Hand the list to someone else: "Chris, Dave, Sam, …", which their name box splits back out.
-  function sendList() {
-    const names = S.roster.map((r) => r.name);
+  function sendList(names = S.roster.map((r) => r.name)) {
     if (!names.length) return;
-    const text = names.join(', ');
-    const copied = () => toast(`📋 Copied ${names.length} ${names.length === 1 ? 'name' : 'names'}`);
+    shareText(names.join(', '), `📋 Copied ${names.length} ${names.length === 1 ? 'name' : 'names'}`);
+  }
+  // Everyone still in, most lives first, as "Pete [3], Fiona [1]" for the other table's
+  // Add a late player box.
+  const finalists = () => S.players.filter(isAlive).sort((a, b) => b.lives - a.lives);
+  const finalistsText = () => finalists().map((p) => `${p.name} [${p.lives}]`).join(', ');
+  // `btn`: a button in an open panel, which says "✓ Copied" itself (a toast would sit behind the panel)
+  function shareText(text, copiedMsg, btn = null) {
+    const copied = () => {
+      if (!btn || !btn.isConnected) { toast(copiedMsg); return; }
+      const label = btn.innerHTML;
+      btn.textContent = '✓ Copied';
+      btn.classList.add('copied');
+      setTimeout(() => { if (btn.isConnected) { btn.innerHTML = label; btn.classList.remove('copied'); } }, 1600);
+    };
     if (navigator.share) {
       navigator.share({ text }).catch((err) => { if (!err || err.name !== 'AbortError') copyText(text, copied); });
     } else copyText(text, copied);
@@ -694,9 +715,10 @@
   }
 
   function startGame() {
-    if (S.roster.length < 2) return;
-    saveRoster(S.roster.map((r) => r.name));
-    beginWith(S.roster.map((r) => r.name));
+    const names = tableOne().map((r) => r.name);
+    if (names.length < 2) return;
+    saveRoster(S.roster.map((r) => r.name)); // the whole night's list, for next time
+    beginWith(names);
   }
 
   function rematch() {
@@ -730,12 +752,13 @@
   }
 
   function addLate(text) {
-    const names = parseNames(text);
-    if (!names.length || S.phase !== 'playing') return;
-    const { fresh, dupes } = splitDupes(names, S.players.map((p) => p.name));
+    const entries = parseNames(text).map(withLives);
+    if (!entries.length || S.phase !== 'playing') return;
+    const livesOf = new Map(entries.map((e) => [e.name, e.lives]));
+    const { fresh, dupes } = splitDupes(entries.map((e) => e.name), S.players.map((p) => p.name));
     if (fresh.length) {
       commit(() => {
-        fresh.forEach((n) => S.players.push(newPlayer(n, S.startLives || START_LIVES)));
+        fresh.forEach((n) => S.players.push(newPlayer(n, livesOf.get(n) || S.startLives || START_LIVES)));
         S.last = { type: 'add', name: fresh.join(', ') };
       });
     }
@@ -810,10 +833,20 @@
 
   // Returns the names that were skipped as duplicates.
   function addNames(text) {
-    const names = parseNames(text);
+    let names = parseNames(text).map((n) => withLives(n).name); // lives only count for late players
+    const splitAsk = names.some((n) => nameKey(n) === 'splitlist'); // a hidden extra (see splitTables)
+    if (splitAsk) names = names.filter((n) => nameKey(n) !== 'splitlist');
+    if (splitAsk && !isSplit() && S.roster.length + names.length >= 4) {
+      addNames(names.join(','));
+      splitTables();
+      return [];
+    }
     if (!names.length) return [];
     const { fresh, dupes } = splitDupes(names, S.roster.map((r) => r.name));
-    S.roster.push(...fresh.map((name) => ({ id: uid(), name })));
+    fresh.forEach((name) => {
+      const toTwo = isSplit() && tableTwo().length < tableOne().length; // keep the tables even
+      S.roster.push(toTwo ? { id: uid(), name, t: 2 } : { id: uid(), name });
+    });
     setupNotice = dupes.length === 1
       ? `<b>${esc(dupes[0])}</b> is already on the list. Add a last initial, like “${esc(dupes[0])} R”.`
       : dupes.length
@@ -823,6 +856,27 @@
     save();
     render();
     return dupes;
+  }
+
+  // Two tables: Table 2's players are marked t: 2, and this phone scores Table 1. Shuffling
+  // keeps everyone at their table; dragging a name onto the other table moves it there.
+  const SPLIT_AT = 16;
+  const isSplit = () => S.roster.some((r) => r.t === 2);
+  const tableOne = () => S.roster.filter((r) => r.t !== 2);
+  const tableTwo = () => S.roster.filter((r) => r.t === 2);
+  function splitTables() {
+    const all = shuffle(S.roster.map(({ t, ...r }) => r));
+    const half = Math.ceil(all.length / 2);
+    S.roster = all.map((r, i) => (i < half ? r : { ...r, t: 2 }));
+    save();
+    render();
+    buzz(20);
+    toast(`✂️ Two tables of ${half} and ${all.length - half}`);
+  }
+  function unsplit() {
+    S.roster = S.roster.map(({ t, ...r }) => r);
+    save();
+    render();
   }
 
   function shuffleRoster() {
@@ -971,25 +1025,41 @@
     const hadFocus = document.activeElement && document.activeElement.id === 'nameInput';
     syncGroupTier();
     const r = S.roster;
+    const split = isSplit();
+    const n = startCount(); // players in the game this phone starts (Table 1 when split)
     const saved = loadRoster();
     const lives = gameLives();
     const clockSecs = clockPrefs.on ? clockPrefs.secs : 0;
     let est = '';
-    if (r.length >= 2) {
-      const bits = [`⌛ <b>About ${estimateText(r.length, lives, clockSecs)}</b>`];
-      if (lives < START_LIVES && groupTier(r.length)) bits.push(`Classic would take ${estimateText(r.length, START_LIVES, 0)}`);
-      else if (!clockSecs && r.length >= CLOCK_TIP_AT) bits.push('a shot clock would speed it up');
+    if (n >= 2) {
+      const bits = [`⌛ <b>About ${estimateText(n, lives, clockSecs)}</b>`];
+      if (split) bits.push('per table, both at once');
+      else if (lives < START_LIVES && groupTier(n)) bits.push(`Classic would take ${estimateText(n, START_LIVES, 0)}`);
+      else if (!clockSecs && n >= CLOCK_TIP_AT) bits.push('a shot clock would speed it up');
       est = `<p class="est">${bits.map((b) => `<span>${b}</span>`).join(' · ')}</p>`;
     }
 
-    const list = r.length
-      ? `<ol class="roster ${shuffling ? 'shuffling' : ''}" id="roster">${r.map((p, i) => `
+    const ol = (items) => `<ol class="roster ${shuffling ? 'shuffling' : ''}">${items.map((p, i) => `
           <li data-id="${p.id}" class="${dragId === p.id ? 'dragging' : ''}">
-            <span class="grip" data-grip title="Drag to reorder" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="grip" data-grip title="Drag to reorder${split ? ' or move to the other table' : ''}" aria-hidden="true"><i></i><i></i><i></i></span>
             <span class="rnum">${i + 1}</span>
             <span class="rname">${esc(p.name)}</span>
             <button class="rdel" data-del="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button>
-          </li>`).join('')}</ol>`
+          </li>`).join('')}</ol>`;
+    const t1 = tableOne();
+    const t2 = tableTwo();
+    const list = split
+      ? `<div class="table-group t1">
+          <div class="tg-head"><b>Table 1 · ${t1.length}</b><small>scored here</small></div>
+          ${ol(t1)}
+        </div>
+        <div class="table-group">
+          <div class="tg-head"><b>Table 2 · ${t2.length}</b><button class="btn btn-brass btn-sm" data-do="sendTable2">📤 Send list</button></div>
+          ${ol(t2)}
+        </div>
+        <button class="link-btn" data-do="unsplit">Undo split (back to one list)</button>`
+      : r.length
+      ? ol(r)
       : `<div class="empty">
           <div class="empty-rack" aria-hidden="true">${[1, 2, 3].map((n) => `<span>${'<i></i>'.repeat(n)}</span>`).join('')}</div>
           <p>No players yet. Add names above.</p>
@@ -1017,8 +1087,9 @@
           <h2>Players <span class="count">${r.length}</span></h2>
           <div class="roster-tools">
             <button class="btn btn-ghost" data-do="shuffle" aria-label="Shuffle" ${r.length < 2 ? 'disabled' : ''}><span aria-hidden="true">🎲</span><span class="rt-label">Shuffle</span></button>
+            ${!split && r.length >= SPLIT_AT ? '<button class="btn btn-ghost" data-do="split" aria-label="Split into 2 tables" title="Split into 2 tables"><span aria-hidden="true">✂️</span><span class="rt-label">Split</span></button>' : ''}
             <button class="btn btn-ghost" data-do="clear" ${r.length ? '' : 'disabled'}>Clear</button>
-            ${r.length ? '<button class="btn btn-ghost send-list" data-do="sendList" aria-label="Send this player list" title="Send this list (paste it into the name box on another phone)">📤</button>' : ''}
+            ${r.length && !split ? '<button class="btn btn-ghost send-list" data-do="sendList" aria-label="Send this player list" title="Send this list (paste it into the name box on another phone)">📤</button>' : ''}
           </div>
         </div>
 
@@ -1040,8 +1111,8 @@
             </div>
           </div>
           ${est}
-          <button class="btn btn-start" data-do="start" ${r.length < 2 ? 'disabled' : ''}>
-            ${r.length < 2 ? 'Add at least 2 players' : `${MODE_ICON[gameLives()] ? `<span class="start-mode" aria-hidden="true"><i>${MODE_ICON[gameLives()]}</i></span>` : ''}Rack ’em · ${r.length} players`}
+          <button class="btn btn-start" data-do="start" ${n < 2 ? 'disabled' : ''}>
+            ${n < 2 ? 'Add at least 2 players' : `${MODE_ICON[gameLives()] ? `<span class="start-mode" aria-hidden="true"><i>${MODE_ICON[gameLives()]}</i></span>` : ''}Rack ’em · ${split ? `Table 1 · ${n}` : `${n} players`}`}
           </button>
         </div>
       </section>`;
@@ -1845,6 +1916,24 @@
       return;
     }
 
+    // Two tables: send this table's players still in to the other table's game
+    if (sheetMode.type === 'finalists') {
+      const left = finalists();
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Send finalists</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">${left.length} ${left.length === 1 ? 'player is' : 'players are'} still in. The other table’s scorekeeper pastes this into <b>Add a late player</b> in their menu, and each player joins with their lives.</p>
+          <div class="fin-list">${left.map((p) => `<div class="fin"><span class="fin-name">${esc(p.name)}</span><span class="fin-lives">${livesLabel(p.lives)}</span></div>`).join('')}</div>
+          <p class="fin-preview">${esc(finalistsText())}</p>
+          <button class="btn btn-start fin-send" data-sheet="sendFinalists" ${left.length ? '' : 'disabled'}>📤 Send ${left.length} ${left.length === 1 ? 'finalist' : 'finalists'}</button>
+          ${share ? '<p class="sheet-note">People watching this table will need the other table’s game code once you merge.</p>' : ''}
+        </div>`;
+      return;
+    }
+
     // How to play, with this game's lives and shot clock
     if (sheetMode.type === 'rules') {
       try { localStorage.setItem(RULES_KEY, '1'); } catch (_) { /* ignore */ }
@@ -2132,6 +2221,7 @@
           <button class="sheet-btn" data-sheet="rerack">🎱 Re-rack<small>${esc(current() ? current().name : '')} breaks the new rack</small></button>
           <button class="sheet-btn" data-sheet="clockPanel">⏱ Shot clock ${onOff(clockPrefs.on)}${clockPrefs.on ? ` <span class="state-note">${clockPrefs.secs} sec</span>` : ''}<small>Turn it on or off, or change the time</small></button>
           <button class="sheet-btn" data-sheet="sound">${soundOn ? '🔊 Sound' : '🔇 Sound'} ${onOff(soundOn)}<small>${share && soundOn && roomSound !== 'phone' ? ({ tv: 'Playing on the TV screen', both: 'Playing here and on the TV screen', everyone: 'Party mode: playing on every device' })[roomSound] + ' (change in Share live)' : 'Arcade effects for extra lives, knockouts and the winner'}</small></button>
+          <button class="sheet-btn" data-sheet="finalists">📤 Send finalists<small>Everyone still in, with their lives, to merge into the other table’s game</small></button>
           <button class="sheet-btn" data-sheet="rules">📖 How to play<small>The rules, with this game’s lives and shot clock</small></button>
           <button class="sheet-btn" data-sheet="rematch">🔁 Rematch<small>Same players, fresh lives, new random order</small></button>
           <button class="sheet-btn danger" data-sheet="newgame">New game<small>Back to the player list</small></button>
@@ -2163,6 +2253,8 @@
     switch (b.dataset.sheet) {
       case 'close': closeSheet(); break;
       case 'rules': sheetMode = { type: 'rules' }; renderSheet(); break;
+      case 'finalists': sheetMode = { type: 'finalists' }; renderSheet(); break;
+      case 'sendFinalists': { const n = finalists().length; shareText(finalistsText(), `📋 Copied ${n} ${n === 1 ? 'finalist' : 'finalists'}`, b); break; }
       case 'inc': if (p) setLives(p, p.lives + 1); break;
       case 'dec': if (p) setLives(p, p.lives - 1); break;
       case 'shoot': if (p) { makeShooter(p); closeSheet(); } break;
@@ -2756,6 +2848,9 @@
     switch (t.dataset.do) {
       case 'shuffle': shuffleRoster(); break;
       case 'sendList': sendList(); break;
+      case 'split': splitTables(); break;
+      case 'unsplit': unsplit(); break;
+      case 'sendTable2': sendList(tableTwo().map((r) => r.name)); break;
       case 'clear':
         if (confirmTap(t, 'clear')) { S.roster = []; save(); render(); }
         break;
@@ -2860,12 +2955,14 @@
   function onDragMove(e) {
     if (!dragId) return;
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const li = el && el.closest('#roster li');
+    const li = el && el.closest('.roster li');
     if (!li || li.dataset.id === dragId) return;
     const from = S.roster.findIndex((r) => r.id === dragId);
     const to = S.roster.findIndex((r) => r.id === li.dataset.id);
     if (from < 0 || to < 0) return;
+    const onTwo = S.roster[to].t === 2;
     const [moved] = S.roster.splice(from, 1);
+    if (onTwo) moved.t = 2; else delete moved.t;
     S.roster.splice(to, 0, moved);
     render();
   }
