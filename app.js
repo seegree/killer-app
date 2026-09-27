@@ -35,7 +35,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.27.4';
+  const APP_VERSION = '2026.09.27.5';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -1993,7 +1993,7 @@
           ${sheetMode.welcome ? '<p class="sheet-note">New to Killer? Here’s the whole game.</p>' : ''}
           <ul class="rules-list">
             <li>Players take turns, <b>one shot at a time</b>.</li>
-            <li><b>Sink a ball:</b> you’re safe.</li>
+            <li><b>Sink any ball:</b> you’re safe.</li>
             <li><b>Sink more than one:</b> gain a life for each extra ball.</li>
             <li><b>Miss:</b> lose a life.</li>
             <li><b>Scratch:</b> lose a life, even if you sink a ball.</li>
