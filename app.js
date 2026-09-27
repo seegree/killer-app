@@ -923,17 +923,23 @@
   }
 
   // Two-tap confirmation for destructive buttons, instead of a native confirm().
-  function confirmTap(btn, key) {
+  function confirmTap(btn, key, ask = 'Tap again to confirm') {
     if (confirmKey === key) { confirmKey = null; return true; }
+    if (confirmTap.undo) confirmTap.undo(); // only one button waits for a second tap at a time
     confirmKey = key;
     const original = btn.innerHTML;
-    btn.innerHTML = 'Tap again to confirm';
+    // Keep a menu button's second line, so the button doesn't change height
+    const detail = btn.querySelector('small');
+    if (detail) btn.style.minHeight = `${btn.offsetHeight}px`;
+    btn.innerHTML = detail ? `${ask}${detail.outerHTML}` : ask;
     btn.classList.add('confirming');
-    clearTimeout(confirmTap.timer);
-    confirmTap.timer = setTimeout(() => {
+    confirmTap.undo = () => {
+      clearTimeout(confirmTap.timer);
+      confirmTap.undo = null;
       confirmKey = null;
-      if (btn.isConnected) { btn.innerHTML = original; btn.classList.remove('confirming'); }
-    }, 2500);
+      if (btn.isConnected) { btn.innerHTML = original; btn.classList.remove('confirming'); btn.style.minHeight = ''; }
+    };
+    confirmTap.timer = setTimeout(confirmTap.undo, 2500);
     return false;
   }
 
@@ -1102,7 +1108,7 @@
                  enterkeyhint="enter" autocapitalize="words" autocorrect="off" spellcheck="false" aria-label="Player name">
           <button class="btn btn-brass" type="submit">Add</button>
         </form>
-        <p class="hint${setupNotice ? ' notice' : ''}" aria-live="polite">${setupNotice || 'Tip: paste a whole list — one per line, or separated by commas.'}</p>
+        <p class="hint${setupNotice ? ' notice' : ''}" aria-live="polite">${setupNotice || 'Tip: paste a whole list at once.'}</p>
         ${lastRoster}
 
         <div class="roster-head">
@@ -1230,7 +1236,7 @@
       <section class="game">
         <header class="topbar">
           <div class="brand-sm">${LOGO}<span>Killer</span></div>
-          <div class="pill"><b>${alive}</b> left<i aria-hidden="true">·</i><b>${outCount}</b> out${MODE_ICON[S.startLives] ? `<i aria-hidden="true">·</i><span class="mode-tag" title="${MODES[S.startLives]}: ${S.startLives} ${S.startLives === 1 ? 'life' : 'lives'} each">${MODE_ICON[S.startLives]}</span>` : ''}</div>
+          <div class="pill"><b>${alive}</b> left <b>${outCount}</b> out${MODE_ICON[S.startLives] ? `<span class="mode-tag" title="${MODES[S.startLives]}: ${S.startLives} ${S.startLives === 1 ? 'life' : 'lives'} each">${MODE_ICON[S.startLives]}</span>` : ''}</div>
           ${tvOn()
             ? WATCH_TV
               ? `<div class="top-actions"><div class="tv-join">${qrSvg(watchLink(WATCH, false))}<span>Scan to watch<b>${esc(WATCH)}</b>${watchCount() ? `<i>${watchCount()} watching</i>` : ''}</span></div><button class="icon-btn tv-more" data-do="tvMenu" aria-label="More options">⋯</button></div>`
@@ -2883,7 +2889,7 @@
       case 'unsplit': unsplit(); break;
       case 'sendTable2': sendList(tableTwo().map((r) => r.name)); break;
       case 'clear':
-        if (confirmTap(t, 'clear')) { S.roster = []; save(); render(); }
+        if (confirmTap(t, 'clear', 'Clear?')) { S.roster = []; save(); render(); }
         break;
       case 'lastRoster':
         S.roster = loadRoster().map((name) => ({ id: uid(), name }));
