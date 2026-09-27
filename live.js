@@ -95,6 +95,18 @@ window.killerLive = {
     await remove(gameRef(code));
   },
 
+  // Two tables from the same Split: whichever one starts sharing drops its own current watch code
+  // in its own slot under the shared tag, so the other table can jump straight to watching it with
+  // no code to type or scan. Each slot is a bare code string, nothing else.
+  async setSplitCode(tag, table, code) {
+    await uid();
+    await set(ref(db, `splits/${tag}/${table}`), code);
+  },
+  async getSplitCode(tag, table) {
+    const v = (await get(ref(db, `splits/${tag}/${table}`))).val();
+    return typeof v === 'string' ? v : null;
+  },
+
   // Watchers check in (join time, name, whether it's a TV display) and are checked out by the
   // server the moment their connection drops. Re-checks in after a reconnect.
   async joinWatch(code, info) {

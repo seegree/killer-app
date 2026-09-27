@@ -1944,10 +1944,17 @@ body.tv .join-panel:has(.jp-chips) .jp-note { display: none; }
 /* Two tables on the start screen */
 .table-group { margin-bottom: 12px; padding: 10px 10px 2px; border-radius: 18px; border: 1px solid var(--line); }
 .table-group.t1 { border-color: rgba(245, 197, 66, 0.45); background: rgba(245, 197, 66, 0.04); }
-.tg-head { display: flex; align-items: center; gap: 10px; min-height: 36px; margin: 0 2px 8px; }
-.tg-head b { flex: 1; font-family: var(--display); font-weight: 400; font-size: 24px; letter-spacing: 0.04em; }
+.tg-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-height: 36px; margin: 0 2px 8px; }
+.tg-head b { flex: 1; min-width: 0; font-family: var(--display); font-weight: 400; font-size: 24px; letter-spacing: 0.04em; }
 .tg-head small { font-size: 12px; color: var(--chalk-dim); }
-.tg-head .btn-sm { min-height: 36px; padding: 0 14px; font-size: 14px; }
+.tg-head .btn-sm { min-height: 36px; padding: 0 14px; font-size: 14px; white-space: nowrap; }
+.tg-head .tg-qr { padding: 0 10px; font-size: 16px; }
+/* Both Table 2 buttons now carry a label — on the narrowest phones the name drops to its own
+   row first, rather than squeezing everything (and wrapping the name itself) onto one line */
+@media (max-width: 360px) {
+  .tg-head b { flex-basis: 100%; }
+  .tg-head .btn-sm { padding: 0 10px; font-size: 13px; }
+}
 
 /* Send finalists */
 .fin-list { display: grid; gap: 6px; margin: 12px 0 0; }

@@ -26,6 +26,9 @@
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const uid = () => Math.random().toString(36).slice(2, 10);
+  // Tags two tables from the same Split so a scorekeeper watching the other one can be offered a
+  // merge later. Not secret — it just rides along quietly and nobody needs to notice it.
+  const genTag = () => Math.random().toString(36).slice(2, 7).toUpperCase();
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // The big board hides the tap buttons and relies on the keyboard, so only offer it
   // on devices with a mouse or trackpad (laptops/desktops), not phones or tablets.
@@ -110,8 +113,12 @@
   let prevCurrentId = null;
   let lastPhase = S.phase;
   let dragId = null;
+  let dragStartT; // this player's table (t) when the drag began, to notice a cross-table move
+  // (the "warned once" flag itself lives on S.dragWarned so it survives a reload/backgrounding, same as S.table2Sent)
+  let lastSplit = null; // { tag, names, t2 } from the most recent unsplit, for an immediate same-names resplit
   let shuffling = false;
   let sheetMode = null; // { type: 'menu' } | { type: 'player', id }
+  let otherTableHint = 'unknown'; // 'unknown' | 'ready' | 'none' — re-checked each time the menu opens
   let confirmKey = null;
   let setupNotice = ''; // duplicate-name warning shown under the name box
   let view = 'main'; // 'main' | 'recap' on a finished game
@@ -337,7 +344,13 @@
     return String(text)
       .split(/[\n,;\t]+/)
       .map((s) => s.trim().replace(/\s+/g, ' ').slice(0, 24))
-      .filter(Boolean);
+      .filter(Boolean)
+      // Both name boxes are single-line inputs, which silently strip line breaks on paste — so if
+      // someone pastes a whole Table 2 hand-off message (the link plus "Or paste this list…", see
+      // sendTable2List) instead of just the names, its lines fuse together with no separator left
+      // to split on. A real name never has a colon, slash or "=" in it — a pasted URL or label
+      // always does — so drop anything that does, except the #split/#opts tags addNames() reads.
+      .filter((s) => /^#(split|opts):/i.test(s) || !/[:/=]/.test(s));
   }
 
   // "Pete [2]": a player joining with their lives (finalists sent from another table). Only square
@@ -362,6 +375,80 @@
     }
     return { fresh, dupes };
   }
+
+  // Once a split game is playing, which side of it this device is: the one that tapped Split still
+  // carries the t:2 markers in its own roster; a device that joined via a link or paste doesn't.
+  // Defined up here (not beside isSplit/tableOne/tableTwo below) because applyPendingJoin can call
+  // syncSplitCode at boot time, before that later part of the file has run.
+  const mySplitTable = () => ((S.roster || []).some((r) => r.t === 2) ? 'table1' : 'table2');
+  // Registers this table's current share code under its split tag — not just when sharing first
+  // starts, but also whenever a *new* tag shows up while a phone is already sharing (a scorekeeper
+  // who never toggled sharing off between games would otherwise never re-trigger the one write that
+  // used to live only inside startSharing(), leaving "Watch Table 1/2" stuck on "Not shared yet").
+  // Tracks "tag:code" already written — not just the code — because sharing routinely stays on
+  // across New game/Rematch: the code doesn't change, but a fresh Split does get a fresh tag, and
+  // that new tag still needs registering even though this same code was already synced once before.
+  let syncedSplitCode = null;
+  function syncSplitCode() {
+    if (!S.splitGroup || !share || !window.killerLive) return;
+    const key = `${S.splitGroup}:${share.code}`;
+    if (syncedSplitCode === key) return;
+    syncedSplitCode = key;
+    window.killerLive.setSplitCode(S.splitGroup, mySplitTable(), share.code).catch(() => {
+      if (syncedSplitCode === key) syncedSplitCode = null; // let the next publish retry it
+    });
+  }
+
+  // A join link from a split's QR (scanned with a phone's own camera, not read by this app): sets
+  // up this phone as Table 2. If there's nothing here worth keeping (a blank, never-started setup
+  // screen) it applies right away; otherwise — a game in progress, a finished game, or even just a
+  // half-typed list — it waits for an explicit "Set up Table 2?" confirmation before overwriting
+  // anything, opened once the app finishes booting (see the bottom of this file). Wrapped so a bad
+  // or mangled link (a long URL surviving a camera-app handoff isn't guaranteed) can't ever blank
+  // the whole app — worst case, it's just ignored and whatever was here stays as it was.
+  let pendingJoin = null;
+  try {
+    const params = new URLSearchParams(location.search);
+    const join = params.get('join'); // already decoded by URLSearchParams — do not decode again
+    if (!WATCH && join) {
+      const names = join.split(',').map((n) => n.trim()).filter(Boolean);
+      if (names.length) {
+        pendingJoin = {
+          names,
+          tag: (params.get('sp') || '').toUpperCase() || null,
+          lv: Number(params.get('lv')) || null,
+          co: params.get('co'),
+          cs: Number(params.get('cs')) || null,
+        };
+      }
+      const u = new URL(location.href);
+      ['join', 'sp', 'lv', 'co', 'cs'].forEach((k) => u.searchParams.delete(k));
+      window.history.replaceState(null, '', u.pathname + u.search + u.hash);
+    }
+  } catch (_) { /* a mangled join link: ignore it, start setup as normal */ }
+
+  // Applies a pending join link: a fresh roster (replacing anything here, including a game in
+  // progress), the split tag, and Table 1's game length/shot clock. Called either immediately
+  // (nothing here worth protecting) or once the player confirms overwriting what is.
+  function applyPendingJoin() {
+    if (!pendingJoin) return;
+    const { names, tag, lv, co, cs } = pendingJoin;
+    pendingJoin = null;
+    history = [];
+    S = freshState();
+    const { fresh } = splitDupes(names, []);
+    fresh.forEach((name) => S.roster.push({ id: uid(), name }));
+    if (tag) { S.splitGroup = tag; syncSplitCode(); } // in case this phone is already sharing from an earlier game
+    if (MODES[lv]) S.startLives = lv;
+    if (co !== null) setClockPrefs({ on: co === '1', secs: cs || clockPrefs.secs });
+    if (MODES[lv] || co !== null) S.auto = { tier: groupTier(startCount()), touched: true };
+    save();
+    render();
+  }
+  // Not applied here: this file's own state (publishTimer, syncSplitCode's dependencies, etc.) is
+  // still mid-initialization this early, and applyPendingJoin can touch any of it (that's exactly
+  // the bug this comment is here to prevent a repeat of). It's applied once at the very bottom of
+  // this file instead, after everything — including the app's own first render — is up and running.
 
   // ---------------------------------------------------------------- following yourself (viewers)
 
@@ -719,10 +806,96 @@
     if (!names.length) return;
     shareText(names.join(', '), `📋 Copied ${names.length} ${names.length === 1 ? 'name' : 'names'}`);
   }
+  // The join link a QR encodes for setting up Table 2 with no copy/paste (see the table2qr sheet).
+  // Carries Table 1's actual game length and shot clock too, so Table 2 plays the same rules
+  // rather than picking its own from a possibly very different player count.
+  const joinLink = (names, tag) => {
+    const p = new URLSearchParams();
+    p.set('join', names.join(','));
+    if (tag) p.set('sp', tag);
+    p.set('lv', String(S.startLives));
+    p.set('co', clockPrefs.on ? '1' : '0');
+    p.set('cs', String(clockPrefs.secs));
+    return `${location.origin}${location.pathname}?${p.toString()}`;
+  };
+  // Table 2's hand-off: the actual link (opens straight to a filled-in setup screen — in the
+  // installed app itself on Android, in Safari on iPhone, since iPhone has no way for a plain web
+  // link to reopen an already-installed home-screen app), plus the plain list as a fallback for
+  // pasting into that installed app directly. Both carry the game length and shot clock too.
+  function sendTable2List() {
+    const names = tableTwo().map((r) => r.name);
+    if (!names.length) return;
+    const link = joinLink(names, S.splitGroup);
+    // Comma-separated, not newline-separated, so these tags still land as their own tokens even
+    // after a single-line paste target strips the line breaks around them (see parseNames).
+    const opts = S.splitGroup ? `, #split:${S.splitGroup}, #opts:${S.startLives}:${clockPrefs.on ? 1 : 0}:${clockPrefs.secs}` : '';
+    shareText(`Set up Table 2: ${link}\n\nOr paste this list: ${names.join(', ')}${opts}`, `📋 Copied Table 2's link`);
+    S.table2Sent = true;
+    save();
+  }
   // Everyone still in, most lives first, as "Pete [3], Fiona [1]" for the other table's
   // Add a late player box.
   const finalists = () => S.players.filter(isAlive).sort((a, b) => b.lives - a.lives);
   const finalistsText = () => finalists().map((p) => `${p.name} [${p.lives}]`).join(', ');
+
+  // Two tables from the same Split: once this one (the one being watched) is down to a few, a
+  // scorekeeper who's also running the other table gets offered a merge. Read-only on the table
+  // being watched — it only ever writes to the watcher's own saved game, further down.
+  function mergeInfo() {
+    const og = getOwnGame(); // read fresh: a second tab actively scoring your own game keeps saving
+    if (!WATCH || WATCH_TV || !og || !S.splitGroup) return null;
+    if (og.state.splitGroup !== S.splitGroup) return null;
+    const left = S.players.filter(isAlive);
+    if (!left.length || left.length > FINALISTS_AT) return null;
+    return { left, ownCode: og.code };
+  }
+
+  function mergeBanner(merge) {
+    return `
+      <div class="away-banner merge-banner" role="status" style="top:calc(var(--safe-t) + ${isAway() ? 132 : 64}px)">
+        <span>🔀 This table is down to <b>${merge.left.length}</b>. Bring them into your game?</span>
+        <button class="btn btn-brass" data-do="mergeOpen">Merge</button>
+      </div>`;
+  }
+
+  // Writes only to this device's own saved game (never to the table being watched), then republishes
+  // it: fetches the currently live record first so the clock, room sound and scorer come along
+  // unchanged, rather than reconstructing them and risking a stale overwrite.
+  // Confirming means you're done watching: this leaves watch mode and drops you straight back
+  // into your own game with the merge already applied, rather than an extra tap to back out.
+  async function mergeConfirm(btn) {
+    const merge = mergeInfo();
+    // Read again, right before writing: mergeInfo()'s check and this write are two different
+    // moments, and if a second tab is actively scoring your own game, seconds can pass between
+    // them (the confirmation sheet sitting open) — this makes sure the merge lands on top of
+    // whatever your own game actually is right now, not a snapshot from when the sheet opened.
+    const og = getOwnGame();
+    if (!merge || !og) { closeSheet(); return; }
+    const { fresh } = splitDupes(merge.left.map((p) => p.name), og.state.players.map((p) => p.name));
+    if (!fresh.length) { closeSheet(); toast('Already merged'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Merging…'; }
+    const newPlayers = fresh.map((name) => {
+      const src = merge.left.find((p) => nameKey(p.name) === nameKey(name));
+      return newPlayer(name, (src && src.lives) || og.state.startLives || START_LIVES);
+    });
+    const state = { ...og.state, players: [...og.state.players, ...newPlayers], last: { type: 'add', name: newPlayers.map((p) => p.name).join(', ') } };
+    // A snapshot of the pre-merge state, exactly like commit() takes for every other action, so
+    // Undo (once you're back on your own game) reverts just the merge — not whichever shot you
+    // took right before it too.
+    const { tv: _tv, log, ...rest } = og.state;
+    const preSnap = JSON.stringify({ ...rest, logLen: log.length });
+    const history = [...og.history, preSnap].slice(-HISTORY_CAP);
+    try { localStorage.setItem(GAME_KEY, JSON.stringify({ state, history })); } catch (_) { /* ignore */ }
+    const live = window.killerLive;
+    if (live) {
+      try {
+        const rec = await live.fetch(merge.ownCode);
+        if (rec) await live.publish(merge.ownCode, { ...rec.state, players: state.players, log: state.log, last: state.last }, rec.scorer || null);
+      } catch (_) { /* the local save already succeeded; the next shot re-syncs it if this didn't land */ }
+    }
+    try { sessionStorage.setItem(MERGED_KEY, String(newPlayers.length)); } catch (_) { /* ignore */ }
+    location.href = location.pathname; // same as the ✕ next to LIVE: back to your own game
+  }
   // `btn`: a button in an open panel, which says "✓ Copied" itself (a toast would sit behind the panel)
   function shareText(text, copiedMsg, btn = null) {
     const copied = () => {
@@ -762,7 +935,8 @@
     prevLives.clear();
     prevCurrentId = null;
     const lives = gameLives(); // Rematch keeps the game length; New game goes back to Classic
-    S = { ...freshState(), tv: S.tv, roster: S.roster, phase: 'playing', startLives: lives, startedAt: Date.now(), players: names.map((n) => newPlayer(n, lives)) };
+    const splitGroup = S.splitGroup || null; // carried through Rematch; New game drops it (freshState)
+    S = { ...freshState(), tv: S.tv, roster: S.roster, splitGroup, phase: 'playing', startLives: lives, startedAt: Date.now(), players: names.map((n) => newPlayer(n, lives)) };
     S.log.push({ p: S.players[0].id, t: Date.now(), a: 'rack' }); // the first shooter breaks
     clk = null;
     save();
@@ -775,13 +949,17 @@
     history = [];
     prevLives.clear();
     S = { ...freshState(), roster: S.players.map((p) => ({ id: uid(), name: p.name })) };
+    lastSplit = null; // a genuinely new game shouldn't silently resurrect an old split/tag
     exitFullscreen();
     save();
     render();
   }
 
   function addLate(text) {
-    const entries = parseNames(text).map(withLives);
+    // Discard, never apply: a #split/#opts tag only makes sense before a game starts (see
+    // addNames), but the same pasted Table 2 hand-off message could just as easily land here —
+    // without this they'd show up as literal fake players ("#split:26YY3") in a live game.
+    const entries = stripHandoffTags(parseNames(text), false).map(withLives);
     if (!entries.length || S.phase !== 'playing') return;
     const livesOf = new Map(entries.map((e) => [e.name, e.lives]));
     const { fresh, dupes } = splitDupes(entries.map((e) => e.name), S.players.map((p) => p.name));
@@ -860,9 +1038,33 @@
 
   // ---------------------------------------------------------------- setup actions
 
+  // A #split/#opts tag riding along from the other table's hand-off message (see sendTable2List):
+  // not a player, just Table 1's split identity and game length/clock, so a scorekeeper watching
+  // this table later can be offered a merge and both tables play the same rules. Always stripped
+  // out of the name list; only actually applied to S when `apply` is true (addNames only — never
+  // addLate, since changing split identity or game length mid-game makes no sense).
+  function stripHandoffTags(names, apply) {
+    const tag = names.find((n) => /^#split:\w+$/i.test(n));
+    if (tag) {
+      if (apply) S.splitGroup = tag.split(':')[1].toUpperCase();
+      names = names.filter((n) => n !== tag);
+    }
+    const opts = names.find((n) => /^#opts:\d:[01]:\d+$/i.test(n));
+    if (opts) {
+      if (apply) {
+        const [, lv, co, cs] = opts.match(/^#opts:(\d):([01]):(\d+)$/i);
+        if (MODES[Number(lv)]) S.startLives = Number(lv);
+        setClockPrefs({ on: co === '1', secs: Number(cs) || clockPrefs.secs });
+        S.auto = { tier: groupTier(startCount()), touched: true };
+      }
+      names = names.filter((n) => n !== opts);
+    }
+    return names;
+  }
+
   // Returns the names that were skipped as duplicates.
   function addNames(text) {
-    let names = parseNames(text).map((n) => withLives(n).name); // lives only count for late players
+    let names = stripHandoffTags(parseNames(text).map((n) => withLives(n).name), true); // lives only count for late players
     const splitAsk = names.some((n) => nameKey(n) === 'splitlist'); // a hidden extra (see splitTables)
     if (splitAsk) names = names.filter((n) => nameKey(n) !== 'splitlist');
     if (splitAsk && !isSplit() && S.roster.length + names.length >= 4) {
@@ -893,18 +1095,58 @@
   const isSplit = () => S.roster.some((r) => r.t === 2);
   const tableOne = () => S.roster.filter((r) => r.t !== 2);
   const tableTwo = () => S.roster.filter((r) => r.t === 2);
+  // A one-time check, on opening the menu, for whether the other table has started sharing yet —
+  // not a live watch kept open while the menu happens to be sitting there. Patches the hint text
+  // directly rather than a full re-render, so it can't interrupt someone mid-tap.
+  function checkOtherTable() {
+    otherTableHint = 'unknown';
+    if (!S.splitGroup || !window.killerLive) { otherTableHint = 'none'; return; }
+    const other = mySplitTable() === 'table1' ? 'table2' : 'table1';
+    window.killerLive.getSplitCode(S.splitGroup, other).then((code) => {
+      otherTableHint = code ? 'ready' : 'none';
+      const hint = document.getElementById('otherTableHint');
+      if (hint) hint.textContent = otherTableHint === 'ready' ? 'Jump straight in — no code needed' : 'Not shared yet';
+    }).catch(() => {
+      otherTableHint = 'none';
+      const hint = document.getElementById('otherTableHint');
+      if (hint) hint.textContent = 'Not shared yet';
+    });
+  }
   function splitTables() {
-    const all = shuffle(S.roster.map(({ t, ...r }) => r));
-    const half = Math.ceil(all.length / 2);
-    S.roster = all.map((r, i) => (i < half ? r : { ...r, t: 2 }));
-    toast(`✂️ Two tables of ${half} and ${all.length - half}`);
+    // A split >> unsplit >> resplit with the exact same names (nobody added or removed) goes back to
+    // the same grouping and the same tag, instead of reshuffling into a possibly different split —
+    // so an accidental unsplit tap can't silently swap who's on which table.
+    const names = S.roster.map((r) => nameKey(r.name));
+    const sameAsLast = lastSplit && names.length === lastSplit.names.length
+      && names.every((n) => lastSplit.names.includes(n));
+    if (sameAsLast) {
+      S.roster = S.roster.map((r) => {
+        const { t, ...rest } = r;
+        return lastSplit.t2.includes(nameKey(r.name)) ? { ...rest, t: 2 } : rest;
+      });
+      S.splitGroup = lastSplit.tag;
+      syncSplitCode();
+      toast('✂️ Back to the same two tables');
+    } else {
+      const all = shuffle(S.roster.map(({ t, ...r }) => r));
+      const half = Math.ceil(all.length / 2);
+      S.roster = all.map((r, i) => (i < half ? r : { ...r, t: 2 }));
+      S.splitGroup = genTag();
+      syncSplitCode(); // in case this phone is already sharing from an earlier game
+      toast(`✂️ Two tables of ${half} and ${all.length - half}`);
+      S.table2Sent = false; // a genuinely new split: nobody has this table's list yet
+      S.dragWarned = false;
+    }
     syncGroupTier(true); // a new game length for the new table size says so instead
     save();
     render();
     buzz(20);
   }
   function unsplit() {
+    // Remember this grouping in case the very next thing is an immediate resplit of the same names.
+    lastSplit = { tag: S.splitGroup, names: S.roster.map((r) => nameKey(r.name)), t2: S.roster.filter((r) => r.t === 2).map((r) => nameKey(r.name)) };
     S.roster = S.roster.map(({ t, ...r }) => r);
+    S.splitGroup = null;
     syncGroupTier(true);
     save();
     render();
@@ -1035,6 +1277,8 @@
     if (S.phase === 'playing' && following()) app.insertAdjacentHTML('beforeend', turnAlerts());
     if (WATCH_TV) app.insertAdjacentHTML('beforeend', syncReadout());
     if (isAway()) app.insertAdjacentHTML('beforeend', awayBanner());
+    const merge = mergeInfo();
+    if (merge) app.insertAdjacentHTML('beforeend', mergeBanner(merge));
     if (!WATCH && share && !liveConnected && S.phase !== 'setup') {
       app.insertAdjacentHTML('beforeend', '<div class="offline-banner" role="alert">⚠️ Offline: watchers aren’t getting updates. They’ll catch up when you reconnect.</div>');
     }
@@ -1091,7 +1335,7 @@
           ${ol(t1)}
         </div>
         <div class="table-group">
-          <div class="tg-head"><b>Table 2 · ${t2.length}</b><button class="btn btn-brass btn-sm" data-do="sendTable2">📤 Send list</button></div>
+          <div class="tg-head"><b>Table 2 · ${t2.length}</b><button class="btn btn-ghost btn-sm tg-qr" data-do="table2Qr" aria-label="Show a QR code for Table 2">🔳 QR</button><button class="btn btn-brass btn-sm" data-do="sendTable2">📤 Send link</button></div>
           ${ol(t2)}
         </div>
         <button class="link-btn" data-do="unsplit">Undo split (back to one list)</button>`
@@ -1941,6 +2185,27 @@
   function renderSheet() {
     if (!sheetMode) return closeSheet();
 
+    // A join link arrived (see applyPendingJoin) but there was something here worth asking about
+    // first — a game in progress, a finished game, or just a list already being typed.
+    if (sheetMode.type === 'joinConfirm') {
+      if (!pendingJoin) { closeSheet(); return; }
+      const n = pendingJoin.names.length;
+      const warn = S.phase === 'playing' ? 'This replaces the game you’re running now.'
+        : S.phase === 'finished' ? 'This replaces the finished game on this screen.'
+        : 'This replaces the list you’ve started.';
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Set up Table 2?</h3>
+            <button class="icon-btn" data-sheet="joinConfirmNo" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">This sets up <b>Table 2</b> with <b>${n} ${n === 1 ? 'player' : 'players'}</b>. ${warn}</p>
+          <button class="btn btn-start" data-sheet="joinConfirmYes">Set up Table 2</button>
+          <button class="link-btn" data-sheet="joinConfirmNo">Not now</button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'still') {
       const p = rememberedPlayer();
       if (!p) { sheetMode = { type: 'who' }; return renderSheet(); }
@@ -1973,6 +2238,23 @@
           <p class="fin-preview">${esc(finalistsText())}</p>
           <button class="btn btn-start fin-send" data-sheet="sendFinalists" ${left.length ? '' : 'disabled'}>📤 Send ${left.length} ${left.length === 1 ? 'finalist' : 'finalists'}</button>
           ${share ? '<p class="sheet-note">People watching this table will need the other table’s game code once you merge.</p>' : ''}
+        </div>`;
+      return;
+    }
+
+    // Pull-based merge: opened from mergeBanner, while watching the other table from a split
+    if (sheetMode.type === 'merge') {
+      const merge = mergeInfo();
+      if (!merge) { closeSheet(); return; }
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Merge this table</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">These <b>${merge.left.length}</b> ${merge.left.length === 1 ? 'player' : 'players'} will join <b>your game</b>, keeping their current lives. This doesn’t change this table’s own game.</p>
+          <div class="fin-list">${merge.left.map((p) => `<div class="fin"><span class="fin-name">${esc(p.name)}</span><span class="fin-lives">${livesLabel(p.lives)}</span></div>`).join('')}</div>
+          <button class="btn btn-start fin-send" data-sheet="mergeConfirm">🔀 Merge ${merge.left.length} into your game</button>
         </div>`;
       return;
     }
@@ -2044,6 +2326,21 @@
           <div class="share-code">${esc(WATCH)}</div>
           <div class="share-actions"><button class="btn btn-brass" data-sheet="inviteShare">${navigator.share ? 'Send the link' : copied === 'invite' ? '✓ Copied' : 'Copy link'}</button></div>
           <p class="sheet-note">Anyone who scans this can follow the game live on their phone, and invite others the same way.</p>
+        </div>`;
+      return;
+    }
+
+    // Set up Table 2 with no copy/paste: scan with a phone's own camera app, no scanning in Killer.
+    if (sheetMode.type === 'table2qr') {
+      const link = joinLink(tableTwo().map((r) => r.name), S.splitGroup);
+      sheet.innerHTML = `
+        <div class="sheet-body">
+          <div class="sheet-head">
+            <h3 class="sheet-title">Scan for Table 2</h3>
+            <button class="icon-btn" data-sheet="close" aria-label="Close">✕</button>
+          </div>
+          <div class="share-qr">${qrSvg(link)}</div>
+          <p class="sheet-note">Scan with your phone’s camera to set up Table 2 instantly.</p>
         </div>`;
       return;
     }
@@ -2267,6 +2564,7 @@
           </div>
           <div class="menu-gap"></div>
           ${aliveCount() <= FINALISTS_AT ? `<button class="sheet-btn" data-sheet="finalists">📤 Send finalists<small>Two-table match: send ${aliveCount()} to the other table</small></button>` : ''}
+          ${S.splitGroup ? `<button class="sheet-btn" data-sheet="watchOtherTable">👀 Watch Table ${mySplitTable() === 'table1' ? 2 : 1}<small id="otherTableHint">${{ unknown: 'Checking…', ready: 'Jump straight in — no code needed', none: 'Not shared yet' }[otherTableHint]}</small></button>` : ''}
           <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Peek at another table; ✕ brings you back</small></button>
           ${canTV() ? '<button class="sheet-btn narrow-only" data-sheet="tv">🖥️ Big board<small>Full-screen board for a laptop or TV</small></button>' : ''}
           <div class="menu-gap"></div>
@@ -2299,9 +2597,12 @@
     const p = sheetMode && sheetMode.id ? byId(sheetMode.id) : null;
     switch (b.dataset.sheet) {
       case 'close': closeSheet(); break;
+      case 'joinConfirmYes': applyPendingJoin(); closeSheet(); break;
+      case 'joinConfirmNo': pendingJoin = null; closeSheet(); break;
       case 'rules': sheetMode = { type: 'rules' }; renderSheet(); break;
       case 'finalists': sheetMode = { type: 'finalists' }; renderSheet(); break;
       case 'sendFinalists': { const n = finalists().length; shareText(finalistsText(), `📋 Copied ${n} ${n === 1 ? 'finalist' : 'finalists'}`, b); break; }
+      case 'mergeConfirm': mergeConfirm(b); break;
       case 'inc': if (p) setLives(p, p.lives + 1); break;
       case 'dec': if (p) setLives(p, p.lives - 1); break;
       case 'shoot': if (p) { makeShooter(p); closeSheet(); } break;
@@ -2311,6 +2612,24 @@
       case 'clockPanel': openSheet({ type: 'clock' }); break;
       case 'share': openSheet({ type: 'share' }); break;
       case 'watch': openSheet({ type: 'watch' }); break;
+      case 'watchOtherTable': {
+        if (!S.splitGroup) break;
+        const other = mySplitTable() === 'table1' ? 'table2' : 'table1';
+        const label = other === 'table2' ? 'Table 2' : 'Table 1';
+        b.disabled = true;
+        const hintEl = b.querySelector('small');
+        if (hintEl) hintEl.textContent = 'Checking…';
+        const finish = (code) => {
+          if (code) { location.href = watchLink(code, false); return; }
+          b.disabled = false;
+          otherTableHint = 'none';
+          if (hintEl) hintEl.textContent = 'Not shared yet';
+          toast(`${label} hasn’t started sharing live yet.`, 3000);
+        };
+        if (window.killerLive) window.killerLive.getSplitCode(S.splitGroup, other).then(finish).catch(() => finish(null));
+        else finish(null);
+        break;
+      }
       case 'startShare': startSharing(); break;
       case 'stopShare': if (confirmTap(b, 'stopShare')) stopSharing(); break;
       case 'copyLink': copyLink(shareLink(), 'link'); break;
@@ -2850,7 +3169,7 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults', 'invite', 'tvMenu', 'takeoverOpen'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults', 'invite', 'tvMenu', 'takeoverOpen', 'mergeOpen'];
 
   app.addEventListener('dblclick', (e) => {
     if (tvOn() && e.target.closest('.join-panel, .tv-join')) toggleQr();
@@ -2880,7 +3199,13 @@
       case 'sendList': sendList(); break;
       case 'split': splitTables(); break;
       case 'unsplit': unsplit(); break;
-      case 'sendTable2': sendList(tableTwo().map((r) => r.name)); break;
+      case 'sendTable2': sendTable2List(); break;
+      case 'table2Qr':
+        if (!tableTwo().length) break; // nothing to hand off yet — same guard as sendTable2List
+        S.table2Sent = true;
+        save();
+        openSheet({ type: 'table2qr' });
+        break;
       case 'clear':
         if (confirmTap(t, 'clear', 'Clear?')) { S.roster = []; save(); render(); }
         break;
@@ -2902,6 +3227,7 @@
       case 'invite': openSheet({ type: 'invite' }); break;
       case 'tvMenu': openSheet({ type: 'tvmenu' }); break;
       case 'takeoverOpen': openSheet({ type: 'takeover', since: remoteMeta.claimId }); break;
+      case 'mergeOpen': openSheet({ type: 'merge' }); break;
       case 'joinParty': partyJoined = true; unlockAudio(); sfx.extra(); render(); break;
       case 'declineParty': partyDeclined = true; partyJoined = false; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
@@ -2918,7 +3244,7 @@
       case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); setupTouched(); render(); break;
       case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); setupTouched(); render(); break;
       case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); setupTouched(); render(); break;
-      case 'menu': openSheet({ type: 'menu' }); break;
+      case 'menu': openSheet({ type: 'menu' }); checkOtherTable(); break;
       case 'tv': toggleTV(); break;
       case 'rematch': rematch(); break;
       case 'newgame': newGame(); break;
@@ -2976,6 +3302,7 @@
     if (!grip) return;
     e.preventDefault();
     dragId = grip.closest('li').dataset.id;
+    dragStartT = (S.roster.find((r) => r.id === dragId) || {}).t;
     render();
     window.addEventListener('pointermove', onDragMove);
     window.addEventListener('pointerup', onDragEnd, { once: true });
@@ -2997,10 +3324,18 @@
     render();
   }
 
+  // Can't block a drag mid-gesture with a confirm dialog, so this warns right after the fact
+  // instead — only the first time, and only once Table 2's list has actually gone out, since
+  // rearranging freely is completely normal before that.
   function onDragEnd() {
     window.removeEventListener('pointermove', onDragMove);
     window.removeEventListener('pointerup', onDragEnd);
     window.removeEventListener('pointercancel', onDragEnd);
+    const moved = dragId && S.roster.find((r) => r.id === dragId);
+    if (moved && moved.t !== dragStartT && S.table2Sent && !S.dragWarned) {
+      S.dragWarned = true;
+      toast(`⚠️ ${moved.name} moved tables — Table 2 already has a list. Let them know it changed.`, 4500);
+    }
     dragId = null;
     save();
     render();
@@ -3107,6 +3442,7 @@
     try {
       await live.publish(code, publicState(), share.claim);
       setShareStatus('live');
+      syncSplitCode(); // guaranteed to run once killerLive is actually ready, unlike a boot-time call
     } catch (err) {
       if (isPermission(err)) {
         if (await checkTakenOver()) return; // someone else is scoring this game now
@@ -3130,6 +3466,7 @@
   const AWAY_MS = 30000;
   const MOVED_KEY = 'killer.moved'; // this phone was the scorekeeper until someone took over
   const TOOK_KEY = 'killer.took'; // this device just took over scoring
+  const MERGED_KEY = 'killer.merged'; // just left watching to merge players into this device's own game
   const isPermission = (err) => String(err && (err.code || err.message)).toUpperCase().includes('PERMISSION');
   const remoteMeta = { alive: 0, claimId: null };
 
@@ -3142,14 +3479,23 @@
   // A scorekeeper peeking at another game (the other table, say) is still at the table: keep
   // telling their own game's watchers so, or a long look would read as a dead phone. If someone
   // has taken the game over since, the database refuses the signal, which is fine.
-  const ownShare = (() => {
+  // Re-reads localStorage fresh every call (not cached) since this same device's *other* browser
+  // tab — the one actually running the scorekeeper's own game while this tab just watches — can go
+  // on scoring shots the whole time this tab is open; mergeInfo/mergeConfirm below need the current
+  // save, not whatever this tab happened to see on its own first load.
+  function getOwnGame() {
     if (!WATCH) return null;
     try {
       const own = JSON.parse(localStorage.getItem(SHARE_KEY));
       const game = JSON.parse(localStorage.getItem(GAME_KEY));
-      return own && own.code && own.code !== WATCH && game && game.state && game.state.phase === 'playing' ? own.code : null;
-    } catch (_) { return null; }
-  })();
+      if (own && own.code && own.code !== WATCH && game && game.state && game.state.phase === 'playing') {
+        return { code: own.code, state: game.state, history: Array.isArray(game.history) ? game.history : [] };
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+  const ownGame = getOwnGame(); // a one-time read is fine for the heartbeat below: only the code matters, and it doesn't change while sharing stays on
+  const ownShare = ownGame ? ownGame.code : null;
   if (ownShare) setInterval(() => {
     const live = window.killerLive;
     if (live && document.visibilityState === 'visible') live.beat(ownShare).catch(() => {});
@@ -3367,6 +3713,11 @@
       sessionStorage.removeItem(MOVED_KEY);
       setTimeout(() => toast(moved ? `🎱 ${moved} is scoring now` : '🎱 Scoring moved to another device', 4000), 600);
     }
+    const merged = sessionStorage.getItem(MERGED_KEY);
+    if (merged && !WATCH) {
+      sessionStorage.removeItem(MERGED_KEY);
+      setTimeout(() => toast(`🔀 Merged ${merged} ${merged === '1' ? 'player' : 'players'} into your game`, 3500), 600);
+    }
   } catch (_) { /* ignore */ }
 
   function startSharing() {
@@ -3378,6 +3729,7 @@
     render();
     if (!window.killerLive) setShareStatus('offline');
     publishNow();
+    syncSplitCode();
   }
 
   function stopSharing() {
@@ -3559,4 +3911,10 @@
   });
 
   render();
+  // A join link from this table's own QR/Send link: apply it now that the whole file (not just the
+  // first render) is up and running, or ask first if there's something here worth asking about.
+  if (pendingJoin) {
+    if (S.phase === 'setup' && !S.roster.length) applyPendingJoin();
+    else openSheet({ type: 'joinConfirm' });
+  }
 })();
