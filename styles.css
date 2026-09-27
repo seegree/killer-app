@@ -1931,6 +1931,7 @@ body.tv .join-panel:has(.jp-chips) .jp-note { display: none; }
 /* How to play */
 .rules-list { margin: 12px 0 0; padding: 0 0 0 20px; display: grid; gap: 7px; font-size: 15px; line-height: 1.4; color: var(--chalk-dim); }
 .rules-list b { color: var(--chalk); }
+.rules-note { margin: 10px 2px 0; font-weight: 700; color: var(--chalk); }
 .rules-game { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(245, 197, 66, 0.1); border: 1px solid rgba(245, 197, 66, 0.3); font-size: 14px; line-height: 1.4; }
 .rules-game b { color: var(--gold); }
 .rules-key { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 12px 0 0; font-size: 13px; color: var(--chalk-dim); }

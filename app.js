@@ -35,7 +35,7 @@
   const landscape = () => window.matchMedia('(orientation: landscape)').matches;
   const tvOn = () => S.phase === 'playing' && (WATCH_TV ? landscape() : !!S.tv && canTV());
   // Bumped on every release (see bump-version.sh); must match version.json and index.html.
-  const APP_VERSION = '2026.09.27.3';
+  const APP_VERSION = '2026.09.27.4';
   const UNDO_KEY = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘Z' : 'Ctrl+Z';
 
   // ---------------------------------------------------------------- live sharing (setup)
@@ -1992,14 +1992,15 @@
           </div>
           ${sheetMode.welcome ? '<p class="sheet-note">New to Killer? Here’s the whole game.</p>' : ''}
           <ul class="rules-list">
-            <li>Everyone shoots in turn, <b>one shot each</b>. The board shows who’s up and who’s next.</li>
-            <li><b>Sink any ball:</b> you’re safe.</li>
-            <li><b>Sink two balls in one shot:</b> you gain a life.</li>
-            <li><b>Miss:</b> you lose a life.</li>
-            <li><b>Scratch:</b> you lose a life, even if balls went in.</li>
-            <li><b>The break</b> counts like any shot. If nothing goes in, the breaker shoots again.</li>
-            <li><b>Lose your last life and you’re out.</b> The last player standing wins.</li>
+            <li>Players take turns, <b>one shot at a time</b>.</li>
+            <li><b>Sink a ball:</b> you’re safe.</li>
+            <li><b>Sink more than one:</b> gain a life for each extra ball.</li>
+            <li><b>Miss:</b> lose a life.</li>
+            <li><b>Scratch:</b> lose a life, even if you sink a ball.</li>
+            <li><b>Break:</b> shoot again if you sink nothing.</li>
+            <li><b>Lose your last life:</b> you’re out.</li>
           </ul>
+          <p class="rules-note">Last player standing wins.</p>
           <p class="rules-game"><b>This game:</b> ${icon}${MODES[lives] || MODES[START_LIVES]}, ${lives} ${lives === 1 ? 'life' : 'lives'} each · ${clockPrefs.on ? `${clockPrefs.secs}-second shot clock. Shoot before the buzzer.` : 'no shot clock.'}</p>
           <div class="rules-key">${key(2, 'one life gone')}${key(1, 'two gone')}${key(0, 'out')}${key(START_LIVES + 1, 'a bonus life')}</div>
           ${start ? `<p class="sheet-note">${start.trim()}</p>` : ''}
