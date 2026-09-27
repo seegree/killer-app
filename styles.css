@@ -328,8 +328,13 @@ kbd {
 /* Game length (once unlocked, or for a big group): one slim row above the shot clock */
 .setup-foot .seg.mode-seg { width: 100%; margin: 0 0 12px; }
 .mode-seg i { font-style: normal; margin-right: 4px; }
-/* On the light selected pill, the icon sits in a dark disc (as on Rack 'em) so the yellow bolt stays visible (the black 8-ball shows fine without it) */
-.mode-seg button.on i:not(.ball) { display: inline-grid; place-items: center; width: 1.45em; height: 1.45em; margin: -0.2em 4px -0.2em 0; border-radius: 50%; background: #1a1308; font-size: 0.85em; line-height: 1; vertical-align: middle; }
+/* On the light selected pill, the icon sits in a dark disc (as on Rack 'em) so the yellow bolt stays visible (the black 8-ball shows fine without it).
+   The disc's box is the same size whether selected or not — only its background toggles — so a
+   button never changes width when selection changes (that used to make the whole row shift/wiggle).
+   The translateY nudge is the same offset .start-mode i below already uses to correct for Apple
+   Color Emoji's own off-center glyph metrics (fine on desktop emoji fonts, visibly high on iOS). */
+.mode-seg i:not(.ball) { display: inline-grid; place-items: center; width: 1.45em; height: 1.45em; margin: -0.2em 4px -0.2em 0; border-radius: 50%; background: transparent; font-size: 0.85em; line-height: 1; vertical-align: middle; transform: translateY(0.034em); }
+.mode-seg button.on i:not(.ball) { background: #1a1308; }
 .setup-foot .mode-seg button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 3px 6px; font-size: 14px; line-height: 1.15; }
 .mode-seg small { font-size: 11px; font-weight: 600; opacity: 0.75; }
 .mode-tag { font-size: 15px; line-height: 1; margin-left: 5px; }
@@ -826,7 +831,7 @@ body.tv .pc { min-height: clamp(50px, 3.7vw, 72px); padding-top: 5px; padding-bo
 body.tv .pc-name { font-size: calc(clamp(24px, 2.1vw, 40px) * var(--nfit, 1)); }
 body.tv .pc .chalk { width: clamp(32px, 2.5vw, 46px); height: clamp(32px, 2.5vw, 46px); }
 body.tv .pill { font-size: 16px; }
-body.tv .pill b { font-size: 20px; }
+body.tv .pill b { font-size: 24px; }
 .tv-keys {
   display: flex;
   flex-wrap: wrap;
@@ -1137,6 +1142,9 @@ body.page-locked { position: fixed; left: 0; right: 0; overflow: hidden; }
 .menu-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 2px 0; font-size: 13px; color: var(--chalk-dim); }
 .menu-foot .link-btn { margin: 0; padding: 6px 0; white-space: nowrap; }
 .sheet-btn.danger { color: #ff8a8d; }
+/* Watch Table 1/2, once the other table is actually ready to jump into */
+.sheet-btn.ready { background: rgba(245, 197, 66, 0.16); border-color: rgba(245, 197, 66, 0.5); }
+.sheet-btn.ready small { color: var(--gold); font-weight: 700; }
 .sheet-note { margin: 12px 2px 0; font-size: 13px; color: var(--chalk-dim); }
 .stepper { display: grid; grid-template-columns: 72px 1fr 72px; align-items: center; gap: 10px; }
 .step {
@@ -1348,7 +1356,10 @@ body.watch .pc:active { transform: none; }
 /* TV display: join QR in the top bar */
 .tv-join { display: flex; align-items: center; gap: 10px; }
 .tv-join svg { width: clamp(56px, 4.2vw, 80px); height: auto; padding: 5px; border-radius: 10px; background: #fff; display: block; }
-.tv-join span { display: flex; flex-direction: column; font-size: 13px; font-weight: 700; color: var(--chalk-dim); text-align: right; order: -1; }
+/* align-items: flex-end (not just text-align) so "Scan to watch" and the code line up on their
+   own right edges — text-align alone only lines them up if both happen to stretch to the same
+   width, which a bare text node next to a <b> doesn't reliably do */
+.tv-join span { display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; font-weight: 700; color: var(--chalk-dim); text-align: right; order: -1; }
 .tv-join b { font-family: var(--display); font-weight: 400; font-size: clamp(22px, 2vw, 36px); letter-spacing: 0.12em; color: var(--gold); line-height: 1; padding-top: 4px; }
 
 /* TV display: one click allows room sound */
@@ -1398,7 +1409,7 @@ body.watch .pc:active { transform: none; }
   body.tv .topbar {
     padding: calc(var(--safe-t) + 4px) calc(env(safe-area-inset-right, 0px) + 12px) 4px calc(env(safe-area-inset-left, 0px) + 12px);
   }
-  body.tv .brand-sm { font-size: 22px; }
+  body.tv .brand-sm { font-size: 26px; }
   body.tv .pill { padding: 4px 10px; }
   body.tv .stage {
     flex: 1;
@@ -1889,8 +1900,9 @@ body.tv .join-panel {
 .jp-hint { max-width: min(38vh, 26vw); margin-bottom: -0.4vh; font-size: clamp(12px, 1.5vh, 17px); font-weight: 600; line-height: 1.3; color: var(--chalk-dim); }
 .jp-hint b { color: var(--chalk); white-space: nowrap; }
 .jp-hint b span { margin-right: 0.3em; }
-.jp-code { font-family: var(--display); font-size: clamp(30px, 5.4vh, 70px); letter-spacing: 0.18em; text-indent: 0.18em; line-height: 1; color: var(--gold); }
-.jp-note { font-size: clamp(13px, 1.7vh, 20px); font-weight: 600; color: var(--chalk-dim); }
+/* "Follow the game live on your phone" used to sit below this and just repeat what "Scan to
+   watch" already said above — dropped, and the code sized up to use the room it freed. */
+.jp-code { font-family: var(--display); font-size: clamp(34px, 6.6vh, 84px); letter-spacing: 0.18em; text-indent: 0.18em; line-height: 1; color: var(--gold); }
 body.tv:has(.join-panel) .topbar .tv-join { display: none; }
 @media (orientation: landscape) and (max-height: 600px) {
   body.tv .now-row { display: contents; }
@@ -1919,9 +1931,8 @@ body.tv:has(.join-panel) .topbar .tv-join { display: none; }
 .share-backup { margin: 2px 0 0; font-size: 12px; font-weight: 600; color: var(--chalk-dim); }
 /* The backup scorekeeper's prompt */
 .backup-ask .backup-lead { margin: 4px 0 10px; font-size: 18px; font-weight: 800; color: var(--gold); }
-/* With a crowd showing, the panel keeps its height: a slightly smaller code, and the count replaces the note */
+/* With a crowd showing, the panel keeps its height: a slightly smaller QR makes room for the chips */
 body.tv .join-panel:has(.jp-chips) .jp-qr svg { width: min(30vh, 22vw); }
-body.tv .join-panel:has(.jp-chips) .jp-note { display: none; }
 /* Short TVs (720p): a little less code so a full 27-player board still fits below */
 @media (max-height: 760px) {
   body.tv .jp-qr svg { width: min(33vh, 22vw); }

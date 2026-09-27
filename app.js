@@ -47,6 +47,11 @@
   // browser's own saved game.
   const WATCH = (new URLSearchParams(location.search).get('watch') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || null;
   const WATCH_TV = !!WATCH && new URLSearchParams(location.search).has('tv');
+  // The menu's "🔀 Merge" shortcut (see otherTableRow) skips straight to this watch
+  // link with &merge=1, so the merge sheet opens on its own the moment mergeInfo() is actually
+  // satisfied — no need to find your way to Watch, pick the right table, and tap Merge all over again.
+  const AUTO_MERGE = !!WATCH && new URLSearchParams(location.search).has('merge');
+  let autoMergeDone = !AUTO_MERGE;
   // A watch link with &operator offers to take over scoring in one tap. The flag leaves the
   // address straight away, so a reload, the history or a copied address bar can't fire it again.
   let TAKE_ASK = !!WATCH && new URLSearchParams(location.search).has('operator');
@@ -119,6 +124,8 @@
   let shuffling = false;
   let sheetMode = null; // { type: 'menu' } | { type: 'player', id }
   let otherTableHint = 'unknown'; // 'unknown' | 'ready' | 'none' — re-checked each time the menu opens
+  let otherTableStatus = null; // { alive } | null — their live count, alongside otherTableHint
+  let otherTableMerge = null; // { code, left } | null — set alongside otherTableStatus when alive <= FINALISTS_AT
   let confirmKey = null;
   let setupNotice = ''; // duplicate-name warning shown under the name box
   let view = 'main'; // 'main' | 'recap' on a finished game
@@ -139,6 +146,11 @@
     return { on: false, secs: 30 };
   })();
   let clk = null; // { id, start, pausedAt, expired, ticked } for the player on the board
+  // Set once, from a post-reload flag (see PAUSE_CLOCK_KEY below), and consumed by the very next
+  // auto-start: after a reload people need a moment to reconvene — merging players in, or coming
+  // back from watching another table — so that first clock comes up already paused instead of
+  // silently ticking down while everyone's still getting settled.
+  let clkStartPaused = false;
   let clockRaf = 0; // interval id while the clock is running
   let recapTab = 'awards';
 
@@ -532,8 +544,9 @@
     return Math.max(0, clockPrefs.secs * 1000 - (now - clk.start));
   }
 
-  function startClock(id) {
-    clk = { id, start: Date.now(), pausedAt: 0, expired: false };
+  function startClock(id, paused) {
+    const now = Date.now();
+    clk = { id, start: now, pausedAt: paused ? now : 0, expired: false };
     queuePublish();
   }
 
@@ -858,6 +871,7 @@
       </div>`;
   }
 
+
   // Writes only to this device's own saved game (never to the table being watched), then republishes
   // it: fetches the currently live record first so the clock, room sound and scorer come along
   // unchanged, rather than reconstructing them and risking a stale overwrite.
@@ -894,6 +908,9 @@
       } catch (_) { /* the local save already succeeded; the next shot re-syncs it if this didn't land */ }
     }
     try { sessionStorage.setItem(MERGED_KEY, String(newPlayers.length)); } catch (_) { /* ignore */ }
+    // New players are physically joining the table right now — give the room a beat instead of a
+    // shot clock already ticking down the moment this reloads back into the game.
+    try { sessionStorage.setItem(PAUSE_CLOCK_KEY, '1'); } catch (_) { /* ignore */ }
     location.href = location.pathname; // same as the ✕ next to LIVE: back to your own game
   }
   // `btn`: a button in an open panel, which says "✓ Copied" itself (a toast would sit behind the panel)
@@ -1095,22 +1112,52 @@
   const isSplit = () => S.roster.some((r) => r.t === 2);
   const tableOne = () => S.roster.filter((r) => r.t !== 2);
   const tableTwo = () => S.roster.filter((r) => r.t === 2);
-  // A one-time check, on opening the menu, for whether the other table has started sharing yet —
-  // not a live watch kept open while the menu happens to be sitting there. Patches the hint text
-  // directly rather than a full re-render, so it can't interrupt someone mid-tap.
-  function checkOtherTable() {
+  // A one-time check, on opening the menu, for the split partner's status: whether they're sharing
+  // at all, and if so, their current live count — enough to show something more useful than a bare
+  // "ready" line, and to offer a one-tap Merge shortcut once they're down to a few. Never on a
+  // timer, so nothing can pop up over the board uninvited; this only ever runs when the menu opens.
+  // Patches the row in place rather than a full re-render, so it can't interrupt someone mid-tap.
+  async function checkOtherTable() {
     otherTableHint = 'unknown';
-    if (!S.splitGroup || !window.killerLive) { otherTableHint = 'none'; return; }
+    otherTableStatus = null;
+    otherTableMerge = null;
+    const patch = () => {
+      const row = document.getElementById('otherTableRow');
+      if (row) row.outerHTML = otherTableRow();
+    };
+    const live = window.killerLive;
+    if (!S.splitGroup || !live) { otherTableHint = 'none'; patch(); return; }
     const other = mySplitTable() === 'table1' ? 'table2' : 'table1';
-    window.killerLive.getSplitCode(S.splitGroup, other).then((code) => {
-      otherTableHint = code ? 'ready' : 'none';
-      const hint = document.getElementById('otherTableHint');
-      if (hint) hint.textContent = otherTableHint === 'ready' ? 'Jump straight in — no code needed' : 'Not shared yet';
-    }).catch(() => {
+    try {
+      const code = await live.getSplitCode(S.splitGroup, other);
+      if (!code) { otherTableHint = 'none'; patch(); return; }
+      otherTableHint = 'ready';
+      const rec = await live.fetch(code);
+      const st = rec && rec.state;
+      if (st && st.phase === 'playing' && st.splitGroup === S.splitGroup) {
+        const alive = st.players.filter(isAlive).length;
+        otherTableStatus = { alive };
+        if (alive > 0 && alive <= FINALISTS_AT) otherTableMerge = { code, left: alive };
+      }
+      patch();
+    } catch (_) {
       otherTableHint = 'none';
-      const hint = document.getElementById('otherTableHint');
-      if (hint) hint.textContent = 'Not shared yet';
-    });
+      patch();
+    }
+  }
+
+  // The "Watch Table X" row, paired with a "Merge" shortcut beside it once they're down to a few
+  // (see checkOtherTable) — its own function so a late Firebase answer can patch it into an
+  // already-open menu without a full re-render closing anything else.
+  function otherTableRow() {
+    const label = mySplitTable() === 'table1' ? 2 : 1;
+    const sub = otherTableHint === 'ready'
+      ? (otherTableStatus ? `🔴 Live · ${otherTableStatus.alive} left` : '🔴 Live')
+      : otherTableHint === 'none' ? 'Not shared yet' : 'Checking…';
+    const watchBtn = `<button class="sheet-btn st-row${otherTableHint === 'ready' ? ' ready' : ''}" data-sheet="watchOtherTable"><span class="st-text"><span class="st-title">👀 Watch Table ${label}</span><small>${sub}</small></span></button>`;
+    if (!otherTableMerge) return `<div id="otherTableRow">${watchBtn}</div>`;
+    const mergeBtn = `<button class="sheet-btn st-row ready" data-sheet="mergeShortcut"><span class="st-text"><span class="st-title">🔀 Merge</span><small>Bring them in</small></span></button>`;
+    return `<div id="otherTableRow" class="menu-pair">${watchBtn}${mergeBtn}</div>`;
   }
   function splitTables() {
     // A split >> unsplit >> resplit with the exact same names (nobody added or removed) goes back to
@@ -1279,6 +1326,17 @@
     if (isAway()) app.insertAdjacentHTML('beforeend', awayBanner());
     const merge = mergeInfo();
     if (merge) app.insertAdjacentHTML('beforeend', mergeBanner(merge));
+    if (AUTO_MERGE && !autoMergeDone && merge && !sheet.open) {
+      autoMergeDone = true;
+      openSheet({ type: 'merge' });
+      // So a later background reload (the version auto-updater) can't reopen this on its own if
+      // the merge was declined and this tab just keeps sitting here watching.
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('merge');
+        window.history.replaceState(null, '', u.pathname + u.search + u.hash);
+      } catch (_) { /* ignore */ }
+    }
     if (!WATCH && share && !liveConnected && S.phase !== 'setup') {
       app.insertAdjacentHTML('beforeend', '<div class="offline-banner" role="alert">⚠️ Offline: watchers aren’t getting updates. They’ll catch up when you reconnect.</div>');
     }
@@ -1441,7 +1499,7 @@
     const breakShot = onBreak();
     const again = heldIdx < 0 && lastEvent && lastEvent.a === 'dry';
     const showClock = clockOn() && heldIdx < 0 && !breakShot && (!WATCH || (clk && clk.id === p.id));
-    if (!WATCH && showClock && (!clk || clk.id !== p.id)) startClock(p.id);
+    if (!WATCH && showClock && (!clk || clk.id !== p.id)) { startClock(p.id, clkStartPaused); clkStartPaused = false; }
     const paused = showClock && clk && clk.pausedAt;
     const cv = clockView();
     const clockHtml = showClock ? `
@@ -1480,7 +1538,6 @@
         <div class="jp-qr">${qrSvg(watchLink(joinCode, false))}</div>
         <div class="jp-hint">Or in Killer, tap <b><span aria-hidden="true">👀</span>Watch a game</b> and enter:</div>
         <div class="jp-code">${esc(joinCode)}</div>
-        <div class="jp-note">Follow the game live on your phone</div>
         ${watchersBlock()}
       </aside>` : '';
 
@@ -2564,7 +2621,7 @@
           </div>
           <div class="menu-gap"></div>
           ${aliveCount() <= FINALISTS_AT ? `<button class="sheet-btn" data-sheet="finalists">📤 Send finalists<small>Two-table match: send ${aliveCount()} to the other table</small></button>` : ''}
-          ${S.splitGroup ? `<button class="sheet-btn" data-sheet="watchOtherTable">👀 Watch Table ${mySplitTable() === 'table1' ? 2 : 1}<small id="otherTableHint">${{ unknown: 'Checking…', ready: 'Jump straight in — no code needed', none: 'Not shared yet' }[otherTableHint]}</small></button>` : ''}
+          ${S.splitGroup ? otherTableRow() : ''}
           <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Peek at another table; ✕ brings you back</small></button>
           ${canTV() ? '<button class="sheet-btn narrow-only" data-sheet="tv">🖥️ Big board<small>Full-screen board for a laptop or TV</small></button>' : ''}
           <div class="menu-gap"></div>
@@ -2603,6 +2660,7 @@
       case 'finalists': sheetMode = { type: 'finalists' }; renderSheet(); break;
       case 'sendFinalists': { const n = finalists().length; shareText(finalistsText(), `📋 Copied ${n} ${n === 1 ? 'finalist' : 'finalists'}`, b); break; }
       case 'mergeConfirm': mergeConfirm(b); break;
+      case 'mergeShortcut': if (otherTableMerge) location.href = `${watchLink(otherTableMerge.code, false)}&merge=1`; break;
       case 'inc': if (p) setLives(p, p.lives + 1); break;
       case 'dec': if (p) setLives(p, p.lives - 1); break;
       case 'shoot': if (p) { makeShooter(p); closeSheet(); } break;
@@ -2622,6 +2680,7 @@
         const finish = (code) => {
           if (code) { location.href = watchLink(code, false); return; }
           b.disabled = false;
+          b.classList.remove('ready');
           otherTableHint = 'none';
           if (hintEl) hintEl.textContent = 'Not shared yet';
           toast(`${label} hasn’t started sharing live yet.`, 3000);
@@ -3232,7 +3291,12 @@
       case 'declineParty': partyDeclined = true; partyJoined = false; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
       case 'dismissUp': dismissed.up = turnKey(); render(); break;
-      case 'leaveWatch': location.href = location.pathname; break;
+      case 'leaveWatch':
+        // Same reasoning as a merge: whatever's currently up in your own game shouldn't have its
+        // clock already running the instant you're back from watching someone else's table.
+        try { sessionStorage.setItem(PAUSE_CLOCK_KEY, '1'); } catch (_) { /* ignore */ }
+        location.href = location.pathname;
+        break;
       // Tapping the clock resumes it when paused; otherwise it opens the clock panel.
       case 'clock':
         if (clk && clk.pausedAt) resumeClock(); else pauseClock();
@@ -3467,6 +3531,7 @@
   const MOVED_KEY = 'killer.moved'; // this phone was the scorekeeper until someone took over
   const TOOK_KEY = 'killer.took'; // this device just took over scoring
   const MERGED_KEY = 'killer.merged'; // just left watching to merge players into this device's own game
+  const PAUSE_CLOCK_KEY = 'killer.pauseClock'; // reload into a game whose next clock should start paused
   const isPermission = (err) => String(err && (err.code || err.message)).toUpperCase().includes('PERMISSION');
   const remoteMeta = { alive: 0, claimId: null };
 
@@ -3718,6 +3783,7 @@
       sessionStorage.removeItem(MERGED_KEY);
       setTimeout(() => toast(`🔀 Merged ${merged} ${merged === '1' ? 'player' : 'players'} into your game`, 3500), 600);
     }
+    if (sessionStorage.getItem(PAUSE_CLOCK_KEY)) { sessionStorage.removeItem(PAUSE_CLOCK_KEY); clkStartPaused = true; }
   } catch (_) { /* ignore */ }
 
   function startSharing() {
@@ -3882,7 +3948,10 @@
 
   function applyUpdateWhenIdle() {
     if (!pendingVersion) return;
-    const busy = fb || fanfare || sheet.open || dragId || shuffling;
+    // A running (not paused) shot clock counts as busy too: this reload doesn't preserve clk, so
+    // landing mid-countdown would silently snap it back to the full duration for the same shooter.
+    const clockRunning = clk && !clk.pausedAt && !clk.expired;
+    const busy = fb || fanfare || sheet.open || dragId || shuffling || clockRunning;
     if (busy) { setTimeout(applyUpdateWhenIdle, 3000); return; }
     try { sessionStorage.setItem('killer.updateTried', pendingVersion); } catch (_) { /* ignore */ }
     const url = new URL(location.href);
