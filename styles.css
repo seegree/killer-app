@@ -719,9 +719,9 @@ body.watch .clock-final { cursor: default; }
   font-weight: 700;
 }
 
-/* Only on the break: nothing went in, so the breaker shoots again (on the clock) */
-.dry-break { flex: none; min-height: 40px; margin-left: auto; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(245, 197, 66, 0.55); background: rgba(245, 197, 66, 0.12); color: var(--gold); font-size: 14px; font-weight: 700; white-space: nowrap; }
-.dry-break + .undo { margin-left: -2px; }
+/* Status-line chips: Dry break (on the break) and New rack? (once the rack is nearly cleared) */
+.line-chip { flex: none; min-height: 40px; margin-left: auto; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(245, 197, 66, 0.55); background: rgba(245, 197, 66, 0.12); color: var(--gold); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.line-chip + .undo { margin-left: -2px; }
 
 .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .act {
@@ -827,12 +827,19 @@ body.tv .pill b { font-size: 20px; }
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: 8px 22px;
   padding: 8px var(--pad) calc(var(--safe-b) + 8px);
-  font-size: 13px;
-  color: var(--chalk-faint);
+  font-size: 14px;
+  color: rgba(244, 241, 232, 0.82);
 }
+/* Shortcut hints (big board footer, menu): white keys, easy to read at a glance */
+.tv-keys > span, .keys > span { display: inline-flex; align-items: center; gap: 6px; }
+.tv-keys kbd, .keys kbd { color: #fff; background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.75); }
 @media (hover: none) { .tv-keys { display: none; } }
+/* The key that's due right now (Dry break, New rack?) glows gold and can be clicked */
+.tv-keys .key-hot { display: inline-flex; align-items: center; gap: 6px; margin: -4px 0; padding: 3px 10px 3px 4px; border-radius: 999px; border: 1px solid rgba(245, 197, 66, 0.7); background: rgba(245, 197, 66, 0.16); color: var(--gold); font: inherit; font-weight: 700; cursor: pointer; }
+.tv-keys .key-hot kbd { color: var(--gold); border-color: var(--gold); }
 /* The TV is exactly one screen: the chalkboard and key hints stay put, and if a big roster
    doesn't fit, only the player list scrolls */
 body.tv .game { height: 100dvh; min-height: 0; overflow: hidden; }
@@ -1139,7 +1146,7 @@ body.page-locked { position: fixed; left: 0; right: 0; overflow: hidden; }
 .step-val { display: flex; align-items: center; justify-content: center; gap: 14px; }
 .step-val b { display: block; font-family: var(--display); font-weight: 400; font-size: 54px; line-height: 0.9; padding-top: 4px; }
 .step-val span { font-size: 13px; color: var(--chalk-dim); text-transform: uppercase; letter-spacing: 0.1em; }
-.keys { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 16px; font-size: 13px; color: var(--chalk-dim); }
+.keys { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 16px; font-size: 13px; color: rgba(244, 241, 232, 0.82); }
 .add-sm input { height: 52px; font-size: 16px; }
 .add-sm .btn { height: 52px; }
 @media (hover: none) { .keys { display: none; } }

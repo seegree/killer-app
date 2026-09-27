@@ -557,6 +557,28 @@
   const lastTurnEvent = () => [...S.log].reverse().find((e) => ['rack', 'miss', 'made', 'dry'].includes(e.a));
   const onBreak = () => { const e = lastTurnEvent(); return !e || e.a === 'rack'; };
 
+  // Balls down since the last rack: a made shot is one, and each extra life one more (a two-ball
+  // shot logs extra + made). Once all 15 are down, the status line offers "New rack?".
+  const RACK_BALLS = 15;
+  function ballsSinceRack() {
+    let n = 0;
+    for (let i = S.log.length - 1; i >= 0; i--) {
+      const a = S.log[i].a;
+      if (a === 'rack') break;
+      if (a === 'made' || a === 'extra') n++;
+    }
+    return n;
+  }
+
+  // The big board's key hints stand in for the phone's status-line chips: Re-rack is always
+  // listed, and the one that's due (Dry break on a break, New rack? once the rack is cleared)
+  // glows and can be clicked.
+  function bigBoardHints() {
+    if (onBreak()) return '<span><kbd>B</kbd> Re-rack</span><button class="key-hot" data-do="dryBreak"><kbd>D</kbd> Dry break</button>';
+    if (ballsSinceRack() >= RACK_BALLS) return '<button class="key-hot" data-do="rerackTop"><kbd>B</kbd> New rack?</button>';
+    return '<span><kbd>B</kbd> Re-rack</span>';
+  }
+
   function dryBreak() {
     const p = current();
     if (!p || S.phase !== 'playing' || !onBreak() || S.turnBonus) return;
@@ -1245,7 +1267,8 @@
             ${WATCH ? `<section class="controls watching"><div class="lastline"><span class="last-text">${lastText()}</span></div>${WATCH_TV ? '' : youStrip(meP)}</section>` : `            <section class="controls">
               <div class="lastline">
                 <span class="last-text">${lastText()}</span>
-                ${breakShot && heldIdx < 0 && !S.turnBonus ? '<button class="dry-break" data-do="dryBreak" title="Nothing went in on the break (D)">Dry break</button>' : ''}
+                ${breakShot && heldIdx < 0 && !S.turnBonus ? '<button class="line-chip" data-do="dryBreak" title="Nothing went in on the break (D)">Dry break</button>' : ''}
+                ${!breakShot && heldIdx < 0 && !S.turnBonus && ballsSinceRack() >= RACK_BALLS ? `<button class="line-chip" data-do="rerackTop" title="${ballsSinceRack()} balls down: re-rack, ${esc(p.name)} breaks (B)">🎱 New rack?</button>` : ''}
                 <button class="undo" data-do="undo" ${history.length ? '' : 'disabled'}>↶ Undo</button>
               </div>
               <div class="actions">
@@ -1268,7 +1291,7 @@
           </section>
         </div>
 
-        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span><span><kbd>B</kbd> Re-rack</span>` : ''}${!WATCH && onBreak() ? '<span><kbd>D</kbd> Dry break</span>' : ''}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit big board</span></footer>` : ''}
+        ${tvOn() && !WATCH_TV ? `<footer class="tv-keys">${WATCH ? '' : `<span><kbd>X</kbd> Miss</span><span><kbd>Space</kbd> Made</span><span><kbd>E</kbd> Extra life</span><span><kbd>${UNDO_KEY}</kbd> Undo</span>`}${clockOn() && !WATCH ? `<span><kbd>P</kbd> Pause clock</span><span><kbd>R</kbd> Clock back to ${clockPrefs.secs}</span>` : ''}${WATCH ? '' : bigBoardHints()}${share ? `<span><kbd>Q</kbd> ${bigQr ? 'Smaller' : 'Bigger'} QR code</span>` : ''}<span><kbd>T</kbd> Exit big board</span></footer>` : ''}
       </section>`;
   }
 
