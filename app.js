@@ -9,10 +9,6 @@
   // simply starts everyone part-way (Blitz with a /, Sudden death with an X).
   const MODES = { 3: 'Classic', 2: 'Blitz', 1: 'Sudden death' };
   const MODE_ICON = { 2: '⚡', 1: '💀' }; // Classic has none, except 🎱 in the game length choice
-  // The choice is a hidden extra, off until unlocked on this phone (see modeTap), except for
-  // big groups: from BLITZ_AT players it appears on its own, with a shorter game already picked.
-  const MODES_KEY = 'killer.modes.v1';
-  let modesUnlocked = (() => { try { return localStorage.getItem(MODES_KEY) === 'on'; } catch (_) { return false; } })();
   // Big groups: [players, lives, shot clock seconds]. Games grow with players × lives, so these keep
   // a big night to about an hour (see estimateMins).
   const BIG_GROUPS = [[30, 1, 20], [20, 2, 25]];
@@ -216,19 +212,25 @@
   const groupTier = (n) => { const i = BIG_GROUPS.findIndex(([at]) => n >= at); return i < 0 ? 0 : BIG_GROUPS.length - i; };
   // Players in the game about to start: with the list split into two tables, just Table 1's
   const startCount = () => (S.roster || []).filter((r) => r.t !== 2).length;
-  const modesShown = () => modesUnlocked || groupTier(startCount()) > 0;
-  // Lives for the game about to start (Classic unless a shorter game is shown and chosen)
-  const gameLives = () => (modesShown() && MODES[S.startLives] ? S.startLives : START_LIVES);
+  // Lives for the game about to start
+  const gameLives = () => (MODES[S.startLives] ? S.startLives : START_LIVES);
 
-  // Picks the big-group game length and shot clock each time the list crosses a threshold (either
-  // way). Between crossings the choice is the scorekeeper's. Going back under 20 restores Classic
-  // and the clock as it was before.
+  // Big groups get a shorter game and a shot clock picked for them, but only as the list grows past
+  // 20 or 30 (never back down when players are removed), and never once the scorekeeper has set the
+  // game length or clock themselves. Splitting or un-splitting the tables re-picks for the new table
+  // size (unless they've set it). Clearing the list starts over.
   let groupChanged = false;
-  function syncGroupTier() {
+  function syncGroupTier(resize = false) {
+    if (!S.roster.length) {
+      if (S.auto && !S.auto.touched) { S.startLives = START_LIVES; if (S.auto.clock) setClockPrefs(S.auto.clock); }
+      if (S.auto) { S.auto = null; save(); }
+      return;
+    }
+    if (S.auto && S.auto.touched) return;
     const tier = groupTier(startCount());
     const was = S.auto ? S.auto.tier : 0;
-    if (tier === was) return;
-    if (!was) S.auto = { tier, clock: { ...clockPrefs } };
+    if (tier === was || (tier < was && !resize)) return;
+    if (!S.auto) S.auto = { tier, clock: { ...clockPrefs } };
     S.auto.tier = tier;
     if (tier) {
       const [, lives, secs] = BIG_GROUPS[BIG_GROUPS.length - tier];
@@ -238,11 +240,16 @@
     } else {
       S.startLives = START_LIVES;
       if (S.auto.clock) setClockPrefs(S.auto.clock);
-      S.auto = null;
       toast('Back to Classic', 3000, '.setup-foot');
     }
     groupChanged = true; // the next draw glows the settings that changed
     save();
+  }
+
+  // The scorekeeper set the game length or clock on the start screen: hands off from now on
+  function setupTouched() {
+    if (S.phase !== 'setup') return;
+    S.auto = { ...(S.auto || { tier: groupTier(startCount()), clock: null }), touched: true };
   }
 
   // Rough game length in minutes, [typical, slow]. Fitted to a simulation calibrated on real nights
@@ -890,13 +897,15 @@
     const all = shuffle(S.roster.map(({ t, ...r }) => r));
     const half = Math.ceil(all.length / 2);
     S.roster = all.map((r, i) => (i < half ? r : { ...r, t: 2 }));
+    toast(`✂️ Two tables of ${half} and ${all.length - half}`);
+    syncGroupTier(true); // a new game length for the new table size says so instead
     save();
     render();
     buzz(20);
-    toast(`✂️ Two tables of ${half} and ${all.length - half}`);
   }
   function unsplit() {
     S.roster = S.roster.map(({ t, ...r }) => r);
+    syncGroupTier(true);
     save();
     render();
   }
@@ -1125,10 +1134,9 @@
         <button class="link-btn setup-rules" data-do="rules">📖 How to play</button>
 
         <div class="setup-foot">
-          ${modesShown() ? `
           <div class="seg seg-sm mode-seg" role="radiogroup" aria-label="Game length">
             ${[3, 2, 1].map((n) => `<button role="radio" class="${gameLives() === n ? 'on' : ''}" aria-checked="${gameLives() === n}" data-do="mode" data-n="${n}"><span><i aria-hidden="true"${MODE_ICON[n] ? '' : ' class="ball"'}>${MODE_ICON[n] || '🎱'}</i>${MODES[n]}</span><small>${n} ${n === 1 ? 'life' : 'lives'}</small></button>`).join('')}
-          </div>` : ''}
+          </div>
           <div class="clock-setting">
             <button class="switch${clockPrefs.on ? ' on' : ''}" data-do="clockToggle" role="switch" aria-checked="${clockPrefs.on}" aria-label="Shot clock"><i></i></button>
             <span class="cs-label">⏱ Shot clock</span>
@@ -2384,21 +2392,6 @@
   // Joined, but the phone was locked or left the app: iPhones need a tap to wake the sound again.
   const partyNeedsWake = () => partyOn() && partyJoined && !(actx && actx.state === 'running');
 
-  // Shows or hides the game length choice on the start screen.
-  let modeTaps = [];
-  function modeTap() {
-    const now = Date.now();
-    modeTaps = modeTaps.filter((t) => now - t < 3000).concat(now);
-    if (modeTaps.length < 7) return;
-    modeTaps = [];
-    modesUnlocked = !modesUnlocked;
-    try { localStorage.setItem(MODES_KEY, modesUnlocked ? 'on' : 'off'); } catch (_) { /* ignore */ }
-    if (!modesUnlocked) S.startLives = START_LIVES;
-    save();
-    render();
-    toast(modesUnlocked ? '⚡ Blitz unlocked' : 'Blitz hidden');
-  }
-
   // Shows or hides the party mode option.
   let partyTaps = [];
   function partyTap() {
@@ -2863,7 +2856,6 @@
   });
 
   app.addEventListener('click', (e) => {
-    if (!WATCH && e.target.closest('.setup .wordmark')) { modeTap(); return; }
     const t = e.target.closest('button');
     if (!t || t.disabled) return;
     if (WATCH && !WATCH_ALLOWED.includes(t.dataset.do)) return;
@@ -2897,7 +2889,7 @@
         render();
         break;
       case 'start': startGame(); break;
-      case 'mode': S.startLives = Number(t.dataset.n); save(); render(); break;
+      case 'mode': S.startLives = Number(t.dataset.n); setupTouched(); save(); render(); break;
       case 'undo': undo(); break;
       case 'muteFanfare': sfx.stop(); t.remove(); break;
       case 'dryBreak': dryBreak(); break;
@@ -2922,9 +2914,9 @@
       case 'clockResume': resumeClock(); render(); break;
       case 'clockRestart': restartClock(); render(); break;
       case 'clockRerack': rerack(); break;
-      case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); render(); break;
-      case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); render(); break;
-      case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); render(); break;
+      case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); setupTouched(); render(); break;
+      case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); setupTouched(); render(); break;
+      case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); setupTouched(); render(); break;
       case 'menu': openSheet({ type: 'menu' }); break;
       case 'tv': toggleTV(); break;
       case 'rematch': rematch(); break;
