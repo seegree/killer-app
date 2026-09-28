@@ -892,7 +892,7 @@
       const src = merge.left.find((p) => nameKey(p.name) === nameKey(name));
       return newPlayer(name, (src && src.lives) || og.state.startLives || START_LIVES);
     });
-    const state = { ...og.state, players: [...og.state.players, ...newPlayers], last: { type: 'add', name: newPlayers.map((p) => p.name).join(', ') } };
+    const state = { ...og.state, players: [...og.state.players, ...newPlayers], last: { type: 'add', name: newPlayers.map((p) => p.name).join(', '), merged: true, at: Date.now() } };
     // A snapshot of the pre-merge state, exactly like commit() takes for every other action, so
     // Undo (once you're back on your own game) reverts just the merge — not whichever shot you
     // took right before it too.
@@ -906,6 +906,8 @@
         const rec = await live.fetch(merge.ownCode);
         if (rec) await live.publish(merge.ownCode, { ...rec.state, players: state.players, log: state.log, last: state.last }, rec.scorer || null);
       } catch (_) { /* the local save already succeeded; the next shot re-syncs it if this didn't land */ }
+      // Tell the table these players came from (and anyone watching it) where they went.
+      try { await live.setMerged(S.splitGroup, merge.ownCode, newPlayers.length); } catch (_) { /* best effort */ }
     }
     try { sessionStorage.setItem(MERGED_KEY, String(newPlayers.length)); } catch (_) { /* ignore */ }
     // New players are physically joining the table right now — give the room a beat instead of a
@@ -1326,6 +1328,9 @@
     if (isAway()) app.insertAdjacentHTML('beforeend', awayBanner());
     const merge = mergeInfo();
     if (merge) app.insertAdjacentHTML('beforeend', mergeBanner(merge));
+    syncMergeWatch();
+    mergeToast();
+    if (WATCH_TV && mergedAway) app.insertAdjacentHTML('beforeend', mergedTvPanel());
     if (AUTO_MERGE && !autoMergeDone && merge && !sheet.open) {
       autoMergeDone = true;
       openSheet({ type: 'merge' });
@@ -2388,6 +2393,25 @@
     }
 
     // Set up Table 2 with no copy/paste: scan with a phone's own camera app, no scanning in Killer.
+    // The other table just pulled this table's last players into its game (see onMerged)
+    if (sheetMode.type === 'mergedAway') {
+      const r = mergedAway;
+      if (!r) { closeSheet(); return; }
+      sheet.innerHTML = `
+        <div class="sheet-body merged-away">
+          <div class="sheet-head">
+            <h3 class="sheet-title">🔀 Tables merged</h3>
+            <button class="icon-btn" data-sheet="mergedClose" aria-label="Close">✕</button>
+          </div>
+          <p class="sheet-note">The other table just pulled in the last <b>${r.n} ${r.n === 1 ? 'player' : 'players'}</b> from here. Scan to follow them, or jump straight in:</p>
+          <div class="share-qr">${qrSvg(watchLink(r.into, false))}</div>
+          <div class="jp-code">${esc(r.into)}</div>
+          <button class="btn btn-start" data-sheet="mergedWatch">👀 Watch the merged game</button>
+          <button class="link-btn" data-sheet="mergedClose">Not now</button>
+        </div>`;
+      return;
+    }
+
     if (sheetMode.type === 'table2qr') {
       const link = joinLink(tableTwo().map((r) => r.name), S.splitGroup);
       sheet.innerHTML = `
@@ -2660,6 +2684,8 @@
       case 'finalists': sheetMode = { type: 'finalists' }; renderSheet(); break;
       case 'sendFinalists': { const n = finalists().length; shareText(finalistsText(), `📋 Copied ${n} ${n === 1 ? 'finalist' : 'finalists'}`, b); break; }
       case 'mergeConfirm': mergeConfirm(b); break;
+      case 'mergedWatch': if (mergedAway) location.href = watchLink(mergedAway.into, false); break;
+      case 'mergedClose': mergedAway = null; closeSheet(); break;
       case 'mergeShortcut': if (otherTableMerge) location.href = `${watchLink(otherTableMerge.code, false)}&merge=1`; break;
       case 'inc': if (p) setLives(p, p.lives + 1); break;
       case 'dec': if (p) setLives(p, p.lives - 1); break;
@@ -3228,9 +3254,10 @@
 
   // ---------------------------------------------------------------- events
 
-  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults', 'invite', 'tvMenu', 'takeoverOpen', 'mergeOpen'];
+  const WATCH_ALLOWED = ['recap', 'recapBack', 'tabAwards', 'tabStandings', 'tv', 'muteFanfare', 'enableSound', 'leaveWatch', 'whoami', 'dismissDeck', 'dismissUp', 'joinParty', 'declineParty', 'shareResults', 'invite', 'tvMenu', 'takeoverOpen', 'mergeOpen', 'dismissMerged'];
 
   app.addEventListener('dblclick', (e) => {
+    if (WATCH_TV && mergedAway && e.target.closest('.merged-tv')) { mergedAway = null; render(); return; }
     if (tvOn() && e.target.closest('.join-panel, .tv-join')) toggleQr();
   });
 
@@ -3287,6 +3314,7 @@
       case 'tvMenu': openSheet({ type: 'tvmenu' }); break;
       case 'takeoverOpen': openSheet({ type: 'takeover', since: remoteMeta.claimId }); break;
       case 'mergeOpen': openSheet({ type: 'merge' }); break;
+      case 'dismissMerged': mergedAway = null; render(); break;
       case 'joinParty': partyJoined = true; unlockAudio(); sfx.extra(); render(); break;
       case 'declineParty': partyDeclined = true; partyJoined = false; render(); break;
       case 'dismissDeck': dismissed.deck = turnKey(); render(); break;
@@ -3863,6 +3891,63 @@
       if (extras) { showResult(p.id, 'extra', 1500, extras); if (!remoteSynced()) sfx.extra(); }
       else showResult(p.id, 'safe', 750);
     }
+  }
+
+  // ---------------------------------------------------------------- merge alert (see mergeConfirm)
+  // When the other table pulls this table's last players into its game, this table's scorekeeper,
+  // its watchers and its TV find out, with the merged game's QR to follow them there. Watchers of
+  // the table that did the merging only get a quiet toast naming who just joined.
+  const PAGE_LOADED = Date.now();
+  let mergedAway = null; // { into, n, at } while the alert is showing
+  let mergeSub = null; // { tag, off }
+  let mergeToastAt = 0;
+  const MERGE_SEEN_KEY = 'killer.mergeSeen';
+  function syncMergeWatch() {
+    const live = window.killerLive;
+    // Either table can be the one merged away, so both listen; onMerged skips a merge into itself.
+    const listen = S.splitGroup && live && S.phase !== 'setup';
+    const tag = listen ? S.splitGroup : null;
+    if (mergeSub && mergeSub.tag === tag) return;
+    if (mergeSub && mergeSub.off) mergeSub.off();
+    mergeSub = tag ? { tag, off: live.watchMerged(tag, onMerged) } : null;
+  }
+  function onMerged(raw) {
+    // Anyone signed in can write this slot, so only a clean code, a count and a time get through.
+    const rec = raw && {
+      into: String(raw.into || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8),
+      n: Math.max(0, Math.min(99, Math.floor(Number(raw.n) || 0))),
+      at: Number(raw.at) || 0,
+    };
+    if (!rec || !rec.into || !rec.at || rec.into === WATCH) return;
+    if (!WATCH && share && rec.into === share.code) return;
+    const og = WATCH ? getOwnGame() : null;
+    if (og && og.code === rec.into) return; // this phone did the merging (it's mid-way back to its game)
+    const at = rec.at - serverOffset();
+    if (at < (S.startedAt || 0)) return; // from an earlier game with this split
+    try { if (sessionStorage.getItem(MERGE_SEEN_KEY) === String(rec.at)) return; sessionStorage.setItem(MERGE_SEEN_KEY, String(rec.at)); } catch (_) { /* ignore */ }
+    mergedAway = rec;
+    if (WATCH_TV) { render(); return; }
+    if (!WATCH) { buzz([60, 60, 60]); try { sfx.extra(); } catch (_) { /* ignore */ } }
+    openSheet({ type: 'mergedAway' });
+  }
+  function mergeToast() {
+    if (!WATCH || WATCH_TV || !S.last || !S.last.merged || !S.last.at || S.last.at <= mergeToastAt) return;
+    const first = !mergeToastAt;
+    mergeToastAt = S.last.at;
+    if (first && S.last.at < PAGE_LOADED - 60000) return; // an old merge, not news
+    toast(`🔀 From the other table: ${S.last.name} joined`, 4500);
+  }
+  function mergedTvPanel() {
+    const r = mergedAway;
+    return `
+      <div class="merged-tv" role="alert">
+        <div class="mt-title">🔀 Merged into the other table</div>
+        <p class="mt-sub">${r.n} ${r.n === 1 ? 'player moved' : 'players moved'} over. Scan to keep watching:</p>
+        <div class="mt-qr">${qrSvg(watchLink(r.into, false))}</div>
+        <div class="jp-code">${esc(r.into)}</div>
+        <a class="mt-tv" href="${watchLink(r.into, true)}">📺 Make this screen the TV for the merged game</a>
+        <button class="link-btn" data-do="dismissMerged">Back to this table</button>
+      </div>`;
   }
 
   function applyRemote(state) {

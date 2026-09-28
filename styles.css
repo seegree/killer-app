@@ -1974,3 +1974,18 @@ body.tv .join-panel:has(.jp-chips) .jp-qr svg { width: min(30vh, 22vw); }
 .fin-lives { font-size: 13px; font-weight: 700; color: var(--chalk-dim); }
 .fin-preview { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line); background: rgba(0, 0, 0, 0.25); font: 600 13px/1.4 ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
 .fin-send { width: 100%; margin-top: 14px; }
+
+/* Merge alert: the other table just pulled this table's last players into its game */
+.merged-away .share-qr { width: min(260px, 66vw); }
+.merged-away .jp-code { margin: 6px 0 14px; text-align: center; font-size: 40px; }
+.merged-tv {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2vh;
+  padding: 4vh 4vw; background: rgba(7, 16, 12, 0.97); text-align: center;
+}
+.mt-title { font-family: var(--display); font-size: clamp(40px, 8vh, 110px); letter-spacing: 0.04em; line-height: 1; color: var(--gold); }
+.mt-sub { font-size: clamp(18px, 3vh, 36px); font-weight: 600; color: var(--chalk); }
+.mt-qr svg { display: block; width: min(46vh, 40vw); height: auto; padding: 16px; border-radius: 22px; background: #fff; }
+.merged-tv .jp-code { font-size: clamp(44px, 9vh, 120px); }
+.mt-tv { font-size: clamp(14px, 2vh, 22px); font-weight: 700; color: var(--chalk-dim); text-decoration: underline; }
+.merged-tv .link-btn { font-size: clamp(13px, 1.8vh, 18px); }

@@ -98,6 +98,15 @@ window.killerLive = {
   // Two tables from the same Split: whichever one starts sharing drops its own current watch code
   // in its own slot under the shared tag, so the other table can jump straight to watching it with
   // no code to type or scan. Each slot is a bare code string, nothing else.
+  // A merge just pulled the other table's last players in: tells that table (and its watchers)
+  // where everyone went. { into: code, n, at }.
+  async setMerged(tag, into, n) {
+    await uid();
+    await set(ref(db, `splits/${tag}/merged`), { into, n, at: serverTimestamp() });
+  },
+  watchMerged(tag, cb) {
+    return onValue(ref(db, `splits/${tag}/merged`), (snap) => cb(snap.val()), () => {});
+  },
   async setSplitCode(tag, table, code) {
     await uid();
     await set(ref(db, `splits/${tag}/${table}`), code);
