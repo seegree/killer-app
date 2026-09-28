@@ -174,7 +174,35 @@
     if (WATCH) return;
     try { localStorage.setItem(GAME_KEY, JSON.stringify({ state: S, history })); } catch (_) { /* storage unavailable */ }
     queuePublish();
+    archiveGame();
   }
+
+  // Every finished game is kept, whether or not it was shared (the live copy is replaced by the
+  // next game). Written again only if the finish changes (an Undo and a different finish).
+  let archivedKey = null;
+  // `mergedInto`: this table's last players were just pulled into the other table's game (see
+  // onMerged), so it won't finish on its own; it's kept anyway, linked by splitGroup to the game
+  // they went on to finish in.
+  function archiveGame(mergedInto = null) {
+    const live = window.killerLive;
+    if ((S.phase !== 'finished' && !mergedInto) || !S.startedAt || !live || !live.archive) return;
+    const id = `${S.startedAt}-${S.players.map((p) => p.id).sort().join('').slice(0, 12)}`;
+    const key = `${id}:${S.winner}:${(S.log || []).length}:${mergedInto ? 'm' : ''}`;
+    if (archivedKey === key) return;
+    archivedKey = key;
+    const { tv, roster, history: _h, ...game } = S;
+    const rec = {
+      ...game,
+      finishedAt: Date.now(),
+      ...(mergedInto ? { mergedInto: mergedInto.into, mergedCount: mergedInto.n } : {}),
+      clock: { on: clockPrefs.on, secs: clockPrefs.secs },
+      shared: share ? share.code : null,
+      app: APP_VERSION,
+    };
+    live.archive(id, JSON.parse(JSON.stringify(rec))).catch(() => { if (archivedKey === key) archivedKey = null; });
+  }
+  // A game that finished before the database connection was ready still gets saved.
+  window.addEventListener('killer:live-ready', () => archiveGame());
 
   function loadRoster() {
     try {
@@ -3924,6 +3952,7 @@
     if (og && og.code === rec.into) return; // this phone did the merging (it's mid-way back to its game)
     const at = rec.at - serverOffset();
     if (at < (S.startedAt || 0)) return; // from an earlier game with this split
+    if (!WATCH && S.phase === 'playing') archiveGame(rec);
     try { if (sessionStorage.getItem(MERGE_SEEN_KEY) === String(rec.at)) return; sessionStorage.setItem(MERGE_SEEN_KEY, String(rec.at)); } catch (_) { /* ignore */ }
     mergedAway = rec;
     if (WATCH_TV) { render(); return; }

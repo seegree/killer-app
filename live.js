@@ -98,6 +98,12 @@ window.killerLive = {
   // Two tables from the same Split: whichever one starts sharing drops its own current watch code
   // in its own slot under the shared tag, so the other table can jump straight to watching it with
   // no code to type or scan. Each slot is a bare code string, nothing else.
+  // A copy of each finished game, kept per game (re-finishing after an Undo just updates it).
+  async archive(id, rec) {
+    const owner = await uid();
+    await set(ref(db, `archive/${id}`), { ...rec, owner, saved: serverTimestamp() });
+  },
+
   // A merge just pulled the other table's last players in: tells that table (and its watchers)
   // where everyone went. { into: code, n, at }.
   async setMerged(tag, into, n) {
