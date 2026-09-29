@@ -193,7 +193,9 @@
     const { tv, roster, history: _h, ...game } = S;
     const rec = {
       ...game,
-      finishedAt: Date.now(),
+      // The last shot's time, not "now": saving the same finished game again later (reopening on
+      // the recap, or an Undo and a new finish) mustn't stretch how long it seemed to take.
+      finishedAt: ((S.log || [])[(S.log || []).length - 1] || {}).t || Date.now(),
       ...(mergedInto ? { mergedInto: mergedInto.into, mergedCount: mergedInto.n } : {}),
       clock: { on: clockPrefs.on, secs: clockPrefs.secs },
       shared: share ? share.code : null,
