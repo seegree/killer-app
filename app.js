@@ -1901,7 +1901,9 @@
   let shareImg = { key: null, blob: null, busy: null };
 
   const shareButton = (label = 'Share') => `<button class="btn btn-ghost btn-share" data-do="shareResults"><span aria-hidden="true">📤</span>${label}</button>`;
-  const shareKey = () => JSON.stringify([S.winner, S.outOrder, (S.log || []).length, S.startLives, S.startedAt,
+  // The game's 5-character share code, when the game is being shared (or watched): shown on the image.
+  const gameCode = () => WATCH || (share && share.code) || null;
+  const shareKey = () => JSON.stringify([S.winner, S.outOrder, (S.log || []).length, S.startLives, S.startedAt, gameCode(),
     S.players.map((p) => [p.name, p.lives, p.pots, p.shots, p.extras])]);
 
   function prepareShareImage() {
@@ -1973,6 +1975,7 @@
       day: new Date(S.startedAt || Date.now()),
       lives: S.startLives,
       count: S.players.length,
+      code: gameCode(),
     };
     await Promise.all(['400 100px "Bebas Neue"', '500 30px Inter', '700 30px Inter'].map((f) => document.fonts.load(f))).catch(() => {});
     const logo = await loadWordmark().catch(() => null);
@@ -1987,7 +1990,7 @@
   }
 
   // Lays out the whole picture top to bottom and returns its height. With draw off it only measures.
-  function paintShare(ctx, { w, order, awards, day, lives, count }, logo, draw) {
+  function paintShare(ctx, { w, order, awards, day, lives, count, code }, logo, draw) {
     const M = SHARE_PAD;
     const CW = SHARE_W - M * 2;
     const font = (size, weight = 500, family = 'Inter') => `${weight} ${size}px ${family === 'Inter' ? 'Inter, system-ui, sans-serif' : '"Bebas Neue", Impact, sans-serif'}`;
@@ -2154,6 +2157,12 @@
       text(score, rx + colW - 20, ry + 35, { size: 24, weight: 600, color: SC.dim, align: 'right' });
     });
     y += perCol * rowH + 36;
+
+    // Game code (when shared): lets a game be found again later
+    if (code) {
+      text(`GAME  ${code}`, SHARE_W / 2, y + 40, { size: 54, weight: 400, family: 'display', color: SC.gold, align: 'center' });
+      y += 76;
+    }
 
     // Footer
     const home = `${location.host}${location.pathname.replace(/\/(index\.html)?$/, '')}`;
