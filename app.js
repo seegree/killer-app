@@ -364,6 +364,22 @@
     return false;
   }
 
+  // The last two players agree to share first place: the game ends on the spot with both as
+  // winners. S.winner stays one of them (plenty of code reads it); S.coWinner is the other.
+  function splitFirst() {
+    const left = S.players.filter(isAlive);
+    if (S.phase !== 'playing' || left.length !== 2) return;
+    commit(() => {
+      S.phase = 'finished';
+      S.winner = left[0].id;
+      S.coWinner = left[1].id;
+      S.turnBonus = 0;
+      S.last = { type: 'split', name: `${left[0].name} & ${left[1].name}` };
+    });
+  }
+  // Players who finished first: one, or the two who split it.
+  const winnersOf = () => [byId(S.winner) || S.players.find(isAlive), S.coWinner ? byId(S.coWinner) : null].filter(Boolean);
+
   function randInt(n) {
     if (window.crypto && crypto.getRandomValues) {
       const b = new Uint32Array(1);
@@ -1646,24 +1662,27 @@
   }
 
   function renderWinner() {
-    const w = byId(S.winner) || S.players.find(isAlive);
+    const winners = winnersOf();
+    const w = winners[0];
+    const split = winners.length > 1;
     const podium = S.outOrder.slice().reverse().slice(0, 2).map(byId).filter(Boolean);
+    const winName = winners.map((x) => x.name).join(' & ');
     app.innerHTML = `
       <section class="winner">
         ${fanfare ? MUTE_FANFARE : ''}
         <div class="win-layout">
           <img class="win-poster" src="poster.svg" alt="Killer">
           <div class="win-info">
-            <div class="win-label">Last one standing</div>
-            <h1 class="win-name" style="--fit:${fit(w ? w.name : '')}">${esc(w ? w.name : 'Nobody')}</h1>
-            ${w ? `
+            <div class="win-label">${split ? '🤝 Split first place' : 'Last one standing'}</div>
+            <h1 class="win-name" style="--fit:${fit(winName)}">${esc(w ? winName : 'Nobody')}</h1>
+            ${split ? `<ul class="win-stats">${winners.map((x) => `<li><b>${x.pots}/${x.shots}</b><span>${esc(x.name)}</span></li>`).join('')}</ul>` : w ? `
               <ul class="win-stats">
                 <li><b>${w.shots}</b><span>shots</span></li>
                 <li><b>${w.pots}</b><span>potted</span></li>
                 <li><b>${w.extras}</b><span>extra lives</span></li>
                 <li><b>${w.lives}</b><span>lives left</span></li>
               </ul>` : ''}
-            ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? '2nd' : '3rd'}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
+            ${podium.length ? `<ol class="podium">${podium.map((x, i) => `<li><span class="place">${i === 0 ? (split ? '3rd' : '2nd') : (split ? '4th' : '3rd')}</span><span class="pname">${esc(x.name)}</span></li>`).join('')}</ol>` : ''}
             ${WATCH ? `<div class="win-actions watching"><button class="btn btn-ghost btn-recap" data-do="recap"><span aria-hidden="true">🏅</span>Recap</button>${shareButton()}</div>` : `<div class="win-actions">
               <button class="btn btn-start" data-do="rematch">Rematch</button>
               <button class="btn btn-ghost btn-recap" data-do="recap"><span aria-hidden="true">🏅</span>Recap</button>
@@ -1855,9 +1874,9 @@
 
     const first = out(S.outOrder[0]);
     if (first) add('🩸', 'First Blood', [first], round);
-    const runnerUp = S.outOrder.length > 1 && out(S.outOrder[S.outOrder.length - 1]);
+    const runnerUp = !S.coWinner && S.outOrder.length > 1 && out(S.outOrder[S.outOrder.length - 1]);
     if (runnerUp) add('🥈', 'So Close', [runnerUp], () => 'Last one knocked out');
-    const champ = S.winner && out(S.winner);
+    const champ = !S.coWinner && S.winner && out(S.winner);
     if (champ && L > 1 && champ.p.lives === 1) add('⚰️', 'Dead Man Walking', [champ], () => 'Won it on their last life');
     if (champ && L > 1 && champ.p.misses === 0) add('🧼', 'Flawless', [champ], () => 'Won without a single miss');
 
@@ -1903,7 +1922,7 @@
   const shareButton = (label = 'Share') => `<button class="btn btn-ghost btn-share" data-do="shareResults"><span aria-hidden="true">📤</span>${label}</button>`;
   // The game's 5-character share code, when the game is being shared (or watched): shown on the image.
   const gameCode = () => WATCH || (share && share.code) || null;
-  const shareKey = () => JSON.stringify([S.winner, S.outOrder, (S.log || []).length, S.startLives, S.startedAt, gameCode(),
+  const shareKey = () => JSON.stringify([S.winner, S.outOrder, (S.log || []).length, S.startLives, S.startedAt, gameCode(), S.coWinner,
     S.players.map((p) => [p.name, p.lives, p.pots, p.shots, p.extras])]);
 
   function prepareShareImage() {
@@ -1967,10 +1986,12 @@
   async function drawShareImage() {
     // Take everything from the game now, before waiting on fonts, in case it changes meanwhile (Undo).
     const stats = gameStats();
-    const w = byId(S.winner) || S.players.find(isAlive);
+    const winners = winnersOf();
+    const w = winners[0];
     const data = {
       w: w && { ...w },
-      order: [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean).map((p) => ({ ...p })),
+      split: winners.length > 1,
+      order: [...winners, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean).map((p) => ({ ...p })),
       awards: computeAwards(stats),
       day: new Date(S.startedAt || Date.now()),
       lives: S.startLives,
@@ -1990,7 +2011,7 @@
   }
 
   // Lays out the whole picture top to bottom and returns its height. With draw off it only measures.
-  function paintShare(ctx, { w, order, awards, day, lives, count, code }, logo, draw) {
+  function paintShare(ctx, { w, split, order, awards, day, lives, count, code }, logo, draw) {
     const M = SHARE_PAD;
     const CW = SHARE_W - M * 2;
     const font = (size, weight = 500, family = 'Inter') => `${weight} ${size}px ${family === 'Inter' ? 'Inter, system-ui, sans-serif' : '"Bebas Neue", Impact, sans-serif'}`;
@@ -2063,8 +2084,9 @@
     if (w) {
       const frame = 18;
       const inner = CW - frame * 2;
+      const wname = (split ? `${order[0].name} & ${order[1].name}` : w.name).toUpperCase();
       let nameSize = 190;
-      while (nameSize > 80 && width(w.name.toUpperCase(), nameSize, 400, 'display') > inner - 80) nameSize -= 6;
+      while (nameSize > 80 && width(wname, nameSize, 400, 'display') > inner - 80) nameSize -= 6;
       const panelH = frame * 2 + 44 + 30 + nameSize * 0.9 + 34 + 128 + 44;
       if (draw) {
         const wood = ctx.createLinearGradient(M, y, M + CW, y + panelH);
@@ -2078,13 +2100,15 @@
         box(M + frame, y + frame, inner, panelH - frame * 2, 22, felt);
       }
       let py = y + frame + 44;
-      text('🏆  LAST ONE STANDING', SHARE_W / 2, py + 22, { size: 28, weight: 700, color: SC.gold, align: 'center' });
+      text(split ? '🤝  SPLIT FIRST PLACE' : '🏆  LAST ONE STANDING', SHARE_W / 2, py + 22, { size: 28, weight: 700, color: SC.gold, align: 'center' });
       py += 30 + nameSize * 0.9;
-      text(w.name.toUpperCase(), SHARE_W / 2, py + 6, { size: nameSize, weight: 400, family: 'display', align: 'center' });
+      text(wname, SHARE_W / 2, py + 6, { size: nameSize, weight: 400, family: 'display', align: 'center' });
       py += 34;
-      const tiles = [[w.shots, 'shots'], [w.pots, 'potted'], [w.extras, 'extra lives'], [w.lives, 'lives left']];
+      const tiles = split
+        ? order.slice(0, 2).map((p) => [`${p.pots}/${p.shots}`, clip(p.name, (inner - 48 - 14) / 2 - 20, 22, 500)])
+        : [[w.shots, 'shots'], [w.pots, 'potted'], [w.extras, 'extra lives'], [w.lives, 'lives left']];
       const gap = 14;
-      const tw = (inner - 48 - gap * 3) / 4;
+      const tw = (inner - 48 - gap * (tiles.length - 1)) / tiles.length;
       tiles.forEach(([n, label], i) => {
         const tx = M + frame + 24 + i * (tw + gap);
         box(tx, py, tw, 128, 18, 'rgba(0, 0, 0, 0.28)');
@@ -2095,13 +2119,14 @@
     }
 
     // Runners-up
-    const podium = order.slice(1, 3);
+    const nWin = split ? 2 : 1;
+    const podium = order.slice(nWin, nWin + 2);
     if (podium.length) {
       const pw = (CW - 20) / 2;
       podium.forEach((p, i) => {
         const px = M + i * (pw + 20);
         box(px, y, pw, 96, 20, SC.card);
-        text(i === 0 ? '2ND' : '3RD', px + 28, y + 60, { size: 26, weight: 700, color: SC.brass });
+        text(i === 0 ? (split ? '3RD' : '2ND') : (split ? '4TH' : '3RD'), px + 28, y + 60, { size: 26, weight: 700, color: SC.brass });
         text(clip(p.name.toUpperCase(), pw - 120, 50, 400, 'display'), px + 96, y + 66, { size: 50, weight: 400, family: 'display' });
       });
       y += 96 + 40;
@@ -2148,7 +2173,7 @@
       const row = col ? i - perCol : i;
       const rx = M + col * (colW + 24);
       const ry = y + row * rowH;
-      const win = i === 0;
+      const win = i < nWin;
       box(rx, ry, colW, rowH - 8, 14, win ? 'rgba(245, 197, 66, 0.16)' : SC.card);
       text(win ? '🏆' : ordinal(i + 1), rx + 44, ry + 35, { size: 22, weight: 700, color: win ? SC.gold : SC.dim, align: 'center' });
       const score = `${p.pots}/${p.shots}`;
@@ -2172,7 +2197,8 @@
 
   function renderRecap() {
     const stats = gameStats();
-    const w = byId(S.winner) || S.players.find(isAlive);
+    const winners = winnersOf();
+    const w = winners[0];
     const shots = S.players.reduce((n, p) => n + p.shots, 0);
     const names = (list) => (list.length > 1
       ? `${list.slice(0, -1).map(esc).join(', ')} &amp; ${esc(list[list.length - 1])}`
@@ -2189,16 +2215,17 @@
       </article>`).join('');
 
     // Finishing order: winner, then last out to first out.
-    const order = [w, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean);
+    const order = [...winners, ...S.outOrder.slice().reverse().map(byId)].filter(Boolean);
     const rows = order.map((p, i) => {
       const st = stats.get(p.id);
-      return `<tr class="${i === 0 ? 'is-winner' : ''}">
-          <td class="st-place">${i === 0 ? '🏆' : ordinal(i + 1)}</td>
+      const first = i < winners.length;
+      return `<tr class="${first ? 'is-winner' : ''}">
+          <td class="st-place">${first ? '🏆' : ordinal(i + 1)}</td>
           <td class="st-name">${esc(p.name)}</td>
           <td class="st-num">${p.pots}<span>/${p.shots}</span></td>
           <td class="st-num">${p.extras ? `+${p.extras}` : '–'}</td>
           <td class="st-num st-wide">${st && st.best ? st.best : '–'}</td>
-          <td class="st-num">${i === 0 ? '–' : st && st.outRound ? `R${st.outRound}` : '–'}</td>
+          <td class="st-num">${first ? '–' : st && st.outRound ? `R${st.outRound}` : '–'}</td>
         </tr>`;
     }).join('');
 
@@ -2209,7 +2236,7 @@
           <button class="btn btn-ghost btn-sm" data-do="recapBack">← Back</button>
           <div class="recap-title">
             <h1>Recap</h1>
-            <p>${MODE_ICON[S.startLives] ? `${MODE_ICON[S.startLives]} ${MODES[S.startLives]} · ` : ''}${S.players.length} players · ${shots} shots · won by <b>${esc(w ? w.name : '—')}</b></p>
+            <p>${MODE_ICON[S.startLives] ? `${MODE_ICON[S.startLives]} ${MODES[S.startLives]} · ` : ''}${S.players.length} players · ${shots} shots · ${winners.length > 1 ? 'split by' : 'won by'} <b>${esc(w ? winners.map((x) => x.name).join(' & ') : '—')}</b></p>
           </div>
         </header>
         <div class="seg" role="tablist">
@@ -2683,6 +2710,7 @@
             ${stateRow('sound', soundOn ? '🔊 Sound' : '🔇 Sound', soundPlace(), soundOn)}
           </div>
           <div class="menu-gap"></div>
+          ${aliveCount() === 2 ? '<button class="sheet-btn ready" data-sheet="splitFirst">🤝 Split 1st &amp; 2nd<small>Both finish first, game ends</small></button>' : ''}
           ${aliveCount() <= FINALISTS_AT ? `<button class="sheet-btn" data-sheet="finalists">📤 Send finalists<small>Two-table match: send ${aliveCount()} to the other table</small></button>` : ''}
           ${S.splitGroup ? otherTableRow() : ''}
           <button class="sheet-btn" data-sheet="watch">👀 Watch another game<small>Peek at another table; ✕ brings you back</small></button>
@@ -2797,6 +2825,7 @@
       case 'clockLess': setClockPrefs({ secs: clockPrefs.secs - CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockMore': setClockPrefs({ secs: clockPrefs.secs + CLOCK_STEP }); restartClock(); renderSheet(); break;
       case 'clockToggle': setClockPrefs({ on: !clockPrefs.on }); clk = null; closeSheet(); render(); break;
+      case 'splitFirst': if (confirmTap(b, 'splitFirst')) { closeSheet(); splitFirst(); } break;
       case 'rematch': if (confirmTap(b, 'rematch')) { closeSheet(); rematch(); } break;
       case 'newgame': if (confirmTap(b, 'newgame')) { closeSheet(); newGame(); } break;
     }
