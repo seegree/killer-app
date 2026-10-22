@@ -2010,6 +2010,52 @@
     return new Promise((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error('no image'))), 'image/png'));
   }
 
+  // Emoji drawn straight onto a canvas can land off-centre: sequences like 🛡️ or 🐈‍⬛ are measured
+  // as wider than they're drawn, so centring them by width pushes them sideways. So each icon is
+  // drawn once on a scratch canvas, its actual pixels are measured, and it's placed by those.
+  const emojiSprites = new Map();
+  function emojiSprite(ch, size) {
+    const key = `${ch}|${size}`;
+    if (emojiSprites.has(key)) return emojiSprites.get(key);
+    let sprite = null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(size * 2.6);
+      c.height = Math.ceil(size * 2);
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.font = `500 ${size}px Inter, system-ui, sans-serif`;
+      x.textBaseline = 'alphabetic';
+      x.fillText(ch, size * 0.3, size * 1.4);
+      const { data, width, height } = x.getImageData(0, 0, c.width, c.height);
+      let x0 = width, y0 = height, x1 = -1, y1 = -1;
+      for (let py = 0; py < height; py++) {
+        for (let px = 0; px < width; px++) {
+          if (data[(py * width + px) * 4 + 3] > 12) {
+            if (px < x0) x0 = px;
+            if (px > x1) x1 = px;
+            if (py < y0) y0 = py;
+            if (py > y1) y1 = py;
+          }
+        }
+      }
+      if (x1 >= 0) sprite = { c, sx: x0, sy: y0, sw: x1 - x0 + 1, sh: y1 - y0 + 1 };
+    } catch (_) { /* fall back to plain text */ }
+    emojiSprites.set(key, sprite);
+    return sprite;
+  }
+  // Centres the icon's pixels on (cx, cy); plain text if it couldn't be measured.
+  function drawEmoji(ctx, ch, cx, cy, size) {
+    const sp = emojiSprite(ch, size);
+    if (!sp) {
+      ctx.font = `500 ${size}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(ch, cx, cy);
+      return;
+    }
+    ctx.drawImage(sp.c, sp.sx, sp.sy, sp.sw, sp.sh, Math.round(cx - sp.sw / 2), Math.round(cy - sp.sh / 2), sp.sw, sp.sh);
+  }
+
   // Lays out the whole picture top to bottom and returns its height. With draw off it only measures.
   function paintShare(ctx, { w, split, order, awards, day, lives, count, code }, logo, draw) {
     const M = SHARE_PAD;
@@ -2149,7 +2195,7 @@
         pair.forEach((c, j) => {
           const cx = M + j * (aw + 20);
           box(cx, y, aw, rowH, 22, SC.card);
-          text(c.a.icon, cx + 52, y + 74, { size: 56, weight: 500, align: 'center' });
+          if (draw) drawEmoji(ctx, c.a.icon, cx + 52, y + 56, 56);
           let cy = y + 28;
           text(c.a.title, cx + 104, cy + 22, { size: 24, weight: 700, color: SC.gold });
           cy += 30;
